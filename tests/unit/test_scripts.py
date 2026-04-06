@@ -20,18 +20,18 @@ import sys
 from pathlib import Path
 from unittest.mock import patch
 
-# Add scripts to path
-SCRIPTS_DIR = Path(__file__).parent.parent.parent / "scripts"
-sys.path.insert(0, str(SCRIPTS_DIR))
+# Add repo root to path so scripts can be imported as a package
+REPO_ROOT = Path(__file__).parent.parent.parent
+sys.path.insert(0, str(REPO_ROOT))
 
 
 class TestQubitSpectroscopy:
     """Tests for qubit_spectroscopy script."""
 
-    @patch("qubit_spectroscopy.time.sleep")
+    @patch("scripts.qubit_spectroscopy.time.sleep")
     def test_output_format(self, mock_sleep):
         """Output has required format."""
-        from qubit_spectroscopy import qubit_spectroscopy
+        from scripts.qubit_spectroscopy import qubit_spectroscopy
 
         result = qubit_spectroscopy(
             center_freq=4.8,
@@ -54,10 +54,10 @@ class TestQubitSpectroscopy:
 class TestResonatorSpectroscopy:
     """Tests for resonator_spectroscopy script."""
 
-    @patch("resonator_spectroscopy.time.sleep")
+    @patch("scripts.resonator_spectroscopy.time.sleep")
     def test_output_format(self, mock_sleep):
         """Output has required format."""
-        from resonator_spectroscopy import resonator_spectroscopy
+        from scripts.resonator_spectroscopy import resonator_spectroscopy
 
         result = resonator_spectroscopy(
             center_freq=6.0, span=0.1, num_points=11, power=-20.0, num_averages=100
@@ -75,10 +75,10 @@ class TestResonatorSpectroscopy:
 class TestRabiOscillation:
     """Tests for rabi_oscillation script."""
 
-    @patch("rabi_oscillation.time.sleep")
+    @patch("scripts.rabi_oscillation.time.sleep")
     def test_output_format(self, mock_sleep):
         """Output has required format."""
-        from rabi_oscillation import rabi_oscillation
+        from scripts.rabi_oscillation import rabi_oscillation
 
         result = rabi_oscillation(
             max_amplitude=1.0, num_points=11, pulse_width=20.0, num_averages=100
@@ -96,10 +96,10 @@ class TestRabiOscillation:
 class TestT1Measurement:
     """Tests for t1_measurement script."""
 
-    @patch("t1_measurement.time.sleep")
+    @patch("scripts.t1_measurement.time.sleep")
     def test_output_format(self, mock_sleep):
         """Output has required format."""
-        from t1_measurement import t1_measurement
+        from scripts.t1_measurement import t1_measurement
 
         result = t1_measurement(max_delay=100.0, num_points=11, num_averages=100)
 
@@ -115,10 +115,10 @@ class TestT1Measurement:
 class TestRamseyMeasurement:
     """Tests for ramsey_measurement script."""
 
-    @patch("ramsey_measurement.time.sleep")
+    @patch("scripts.ramsey_measurement.time.sleep")
     def test_output_format(self, mock_sleep):
         """Output has required format."""
-        from ramsey_measurement import ramsey_measurement
+        from scripts.ramsey_measurement import ramsey_measurement
 
         result = ramsey_measurement(
             max_delay=10.0, num_points=11, artificial_detuning=0.01, num_averages=100
@@ -132,10 +132,10 @@ class TestRamseyMeasurement:
         assert isinstance(result["plots"], list)
         assert len(result["plots"]) > 0
 
-    @patch("ramsey_measurement.time.sleep")
+    @patch("scripts.ramsey_measurement.time.sleep")
     def test_population_has_oscillations(self, mock_sleep):
         """Population data should show Ramsey fringes, not monotonic decay."""
-        from ramsey_measurement import ramsey_measurement
+        from scripts.ramsey_measurement import ramsey_measurement
 
         result = ramsey_measurement(
             max_delay=30.0, num_points=81, artificial_detuning=2.0, num_averages=50000

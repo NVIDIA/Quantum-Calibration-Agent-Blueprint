@@ -246,6 +246,8 @@ def temp_scripts_dir(tmp_path):
     """Create temp directory with mock experiment scripts."""
     scripts_dir = tmp_path / "scripts"
     scripts_dir.mkdir()
+    # Create __init__.py so scripts_dir is a proper package
+    (scripts_dir / "__init__.py").write_text("")
     # Create minimal valid script
     (scripts_dir / "test_experiment.py").write_text(
         '''
