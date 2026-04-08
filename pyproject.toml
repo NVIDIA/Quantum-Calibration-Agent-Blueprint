@@ -2,7 +2,7 @@
 name = "qca"
 version = "0.1.0"
 description = "Quantum Calibration Agent"
-license = "LicenseRef-NvidiaProprietary"
+license = "Apache-2.0"
 requires-python = ">=3.11"
 dependencies = [
     "deepagents>=0.4.0",
