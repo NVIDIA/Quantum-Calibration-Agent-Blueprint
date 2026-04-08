@@ -65,13 +65,17 @@ def vlm_inspect(
         Dictionary with VLM analysis results
     """
     # Run async function in sync context
+    # Use a separate thread to avoid "event loop already running" in async
+    # environments (FastAPI, Jupyter, etc.)
     try:
-        loop = asyncio.get_event_loop()
+        asyncio.get_running_loop()
+        # Already inside an event loop — run in a new thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            return pool.submit(asyncio.run, _vlm_inspect_async(experiment_id, prompt)).result()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    return loop.run_until_complete(_vlm_inspect_async(experiment_id, prompt))
+        # No running event loop — safe to use asyncio.run directly
+        return asyncio.run(_vlm_inspect_async(experiment_id, prompt))
 
 
 async def _vlm_inspect_async(
