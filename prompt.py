@@ -23,7 +23,7 @@ from pathlib import Path
 ROOT_DIR = Path(__file__).parent
 
 # Data directories
-DATA_DIR = ROOT_DIR / "data"
+DATA_DIR = ROOT_DIR / "cookbook" / "data"
 KNOWLEDGE_DIR = DATA_DIR / "knowledge"
 EXPERIMENTS_DIR = DATA_DIR / "experiments"
 WORKFLOWS_DIR = DATA_DIR / "workflows"

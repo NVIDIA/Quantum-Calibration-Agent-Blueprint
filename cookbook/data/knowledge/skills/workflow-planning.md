@@ -81,7 +81,7 @@ After confirmation, create the workflow files.
 ### Storage Structure
 
 ```
-data/workflows/
+cookbook/data/workflows/
 └── {workflow_id}/
     ├── workflow.json      # DAG structure
     └── plan.md            # Detailed planning document
@@ -90,12 +90,12 @@ data/workflows/
 ### Step 1: Create Folder
 
 ```bash
-mkdir -p data/workflows/{workflow_id}
+mkdir -p cookbook/data/workflows/{workflow_id}
 ```
 
 Use a descriptive ID like `calibrate_q0_20240315`.
 
-**IMPORTANT: Always use relative paths** when creating workflow files. Use `data/workflows/{workflow_id}/workflow.json`, NOT absolute paths like `/home/.../data/workflows/...`. Absolute paths will fail due to virtual filesystem mode.
+**IMPORTANT: Always use relative paths** when creating workflow files. Use `cookbook/data/workflows/{workflow_id}/workflow.json`, NOT absolute paths like `/home/.../cookbook/data/workflows/...`. Absolute paths will fail due to virtual filesystem mode.
 
 ### Step 2: Write workflow.json
 

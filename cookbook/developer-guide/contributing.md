@@ -73,11 +73,12 @@ qca/
 │   ├── unit/             # Unit tests
 │   ├── integration/      # Integration tests
 │   └── conftest.py       # Pytest fixtures
-├── data/                  # Runtime data
-│   ├── experiments/      # Stored experiments
-│   ├── workflows/        # Workflow definitions
-│   └── knowledge/        # Agent knowledge base
-└── docs/                  # Documentation
+└── cookbook/              # Documentation and runtime data
+    ├── data/             # Runtime data
+    │   ├── experiments/  # Stored experiments
+    │   ├── workflows/    # Workflow definitions
+    │   └── knowledge/    # Agent knowledge base
+    └── ...
 ```
 
 ## Code Style Guidelines

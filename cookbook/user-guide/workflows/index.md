@@ -19,7 +19,7 @@ A workflow is a collection of experiment nodes that execute in a defined order b
 - Extracted results that feed into downstream nodes
 - Run count for retry tracking
 
-Workflows are stored in `data/workflows/{workflow_id}/` with:
+Workflows are stored in `cookbook/data/workflows/{workflow_id}/` with:
 - `workflow.json` - Current workflow state
 - `plan.md` - Planning document (optional but recommended)
 - `history.jsonl` - Append-only event log

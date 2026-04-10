@@ -445,7 +445,7 @@ def get_data_dir() -> Path:
     env_dir = os.getenv("QCAL_DATA_DIR")
     if env_dir:
         return Path(env_dir)
-    return Path(__file__).parent / "data"
+    return Path(__file__).parent / "cookbook" / "data"
 
 
 # =============================================================================

@@ -60,10 +60,10 @@ Agent behavior configuration:
 
 ## Adding Custom Documents
 
-Place markdown files in the `data/knowledge/` directory:
+Place markdown files in the `cookbook/data/knowledge/` directory:
 
 ```
-data/knowledge/
+cookbook/data/knowledge/
 ├── memory/
 │   └── workflow-preferences.md
 └── skills/

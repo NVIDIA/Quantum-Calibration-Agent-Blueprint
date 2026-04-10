@@ -54,8 +54,8 @@ Experiments run in isolated subprocesses:
 
 ### 4. Storage
 Results are automatically saved:
-- HDF5 files: `data/experiments/YYYY/MM/DD/HHMMSS_type.h5`
-- SQLite index: `data/index.db` for fast queries
+- HDF5 files: `cookbook/data/experiments/YYYY/MM/DD/HHMMSS_type.h5`
+- SQLite index: `cookbook/data/index.db` for fast queries
 - Includes metadata, arrays, plots, and parameters
 
 ### 5. Retrieval
