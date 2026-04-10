@@ -1,9 +1,11 @@
-# QCA - Quantum Calibration Agent
+# NVIDIA Ising Calibration
+
+## Cookbook and Quantum Calibration Agent Blueprint
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 
-AI-powered quantum device calibration using DeepAgents framework. QCA provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
+AI-powered quantum device calibration using the DeepAgents framework. QCA provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
 
 ![Web UI](cookbook/_static/images/usage/web-ui-overview.png)
 *The Web UI provides a chat interface for natural language interaction with the calibration agent.*
@@ -23,13 +25,31 @@ QCA (Quantum Calibration Agent) is an AI-powered framework that combines:
 
 The agent supports multiple LLM providers including NVIDIA, Anthropic, and OpenAI.
 
+## Repository Structure
+
+```
+ising-calibration/
+├── cli.py              # Main CLI entry point
+├── server.py           # FastAPI backend server
+├── prompt.py           # Agent system prompt loader
+├── config.yaml         # DeepAgents configuration
+├── core/               # Core library (storage, discovery, runner)
+├── tools/              # DeepAgents tools (lab, workflow, VLM)
+├── scripts/            # Quantum experiment implementations
+├── tests/              # Unit and integration tests
+├── ui/                 # Web UI (Next.js)
+└── cookbook/           # Documentation and runtime data
+    ├── data/           # Runtime data (experiments, workflows, knowledge base)
+    └── ...             # Guides, tutorials, user stories
+```
+
 ## Quick Start
 
 ### Prerequisites
 
 - Python 3.11+
 - Node.js 18+ and npm 9+ (for Web UI)
-- API Key from one of the supported providers:
+- API key from one of the supported providers:
   - [NVIDIA API Catalog](https://build.nvidia.com/) (default)
   - [Anthropic](https://console.anthropic.com/)
   - [OpenAI](https://platform.openai.com/)
@@ -38,8 +58,8 @@ The agent supports multiple LLM providers including NVIDIA, Anthropic, and OpenA
 
 ```bash
 # Clone repository
-git clone https://github.com/your-org/qca.git
-cd qca
+git clone https://github.com/NVIDIA/ising-calibration.git
+cd ising-calibration
 
 # Set up Python environment
 python -m venv .venv
@@ -132,7 +152,7 @@ qca workflow list
 
 ## Documentation
 
-Full documentation is available in the `cookbook/` directory:
+Full documentation and tutorials are available in the [`cookbook/`](cookbook/) directory:
 
 ```bash
 pip install -e ".[docs]"
@@ -152,6 +172,10 @@ pytest
 # Run with coverage
 pytest --cov=core --cov=tools
 ```
+
+## Contributing
+
+See [Contributing.md](Contributing.md) for guidelines on submitting pull requests, coding standards, and the development workflow.
 
 ## License
 
