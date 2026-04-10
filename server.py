@@ -54,8 +54,8 @@ load_dotenv()
 # =============================================================================
 
 ROOT_DIR = Path(__file__).parent
-DATA_DIR = ROOT_DIR / "data" / "experiments"  # Where index.db and HDF5 files are
-KNOWLEDGE_DIR = ROOT_DIR / "data" / "knowledge"
+DATA_DIR = ROOT_DIR / "cookbook" / "data" / "experiments"  # Where index.db and HDF5 files are
+KNOWLEDGE_DIR = ROOT_DIR / "cookbook" / "data" / "knowledge"
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 
 # Ensure directories exist

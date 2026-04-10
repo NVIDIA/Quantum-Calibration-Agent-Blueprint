@@ -7,7 +7,7 @@ Write Python scripts to analyze experiment data. Scripts are saved alongside the
 Scripts go in a subfolder next to the experiment's HDF5 file:
 
 ```
-data/experiments/
+cookbook/data/experiments/
 ├── YYYYMMDD_HHMMSS_type.h5           # Experiment data
 └── YYYYMMDD_HHMMSS_type_scripts/     # Scripts for this experiment
     └── analysis_name.py
@@ -30,7 +30,7 @@ from pathlib import Path
 # Import core storage
 from core import storage
 
-DATA_DIR = Path(__file__).parent.parent.parent  # data/experiments/
+DATA_DIR = Path(__file__).parent.parent.parent  # cookbook/data/
 
 # Get experiment ID from command line
 experiment_id = sys.argv[1]
@@ -75,7 +75,7 @@ python /path/to/script.py <experiment_id>
 
 Example:
 ```bash
-python data/experiments/20240315_143022_qubit_spectroscopy_scripts/fit_peak.py 20240315_143022_qubit_spectroscopy
+python cookbook/data/experiments/20240315_143022_qubit_spectroscopy_scripts/fit_peak.py 20240315_143022_qubit_spectroscopy
 ```
 
 ## Workflow
@@ -93,8 +93,8 @@ python data/experiments/20240315_143022_qubit_spectroscopy_scripts/fit_peak.py 2
 lab(action="history_list", filter_type="qubit_spectroscopy")
 
 # Check each for scripts
-ls data/experiments/20240315_143022_qubit_spectroscopy_scripts/
+ls cookbook/data/experiments/20240315_143022_qubit_spectroscopy_scripts/
 
 # Read a script to copy/adapt
-cat data/experiments/.../fit_peak.py
+cat cookbook/data/experiments/.../fit_peak.py
 ```

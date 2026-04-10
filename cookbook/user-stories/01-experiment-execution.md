@@ -73,7 +73,7 @@ Discovering and running quantum calibration experiments.
 **So that** I know it's working and can estimate completion.
 
 **Acceptance Criteria:**
-- [x] Progress output written to log file in real-time (`data/experiments/{id}/output.log`)
+- [x] Progress output written to log file in real-time (`cookbook/data/experiments/{id}/output.log`)
 - [x] Web UI can poll `/history/{id}/logs` endpoint for progress updates
 - [x] Can see which step/iteration is currently running via log content
 - [x] Experiment scripts use unbuffered output (`PYTHONUNBUFFERED=1`) for immediate flushing

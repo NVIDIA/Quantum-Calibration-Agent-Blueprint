@@ -12,7 +12,7 @@ This guide walks you through five paths — from installation to a full automate
 | **Natural-language execution** | Describe your intent; the agent selects the right experiment, validates parameters against defined ranges, and rejects invalid values before running |
 | **Intelligent result analysis** | A reasoning agent reads numerical outputs; a vision-language model reads the plots — you get a physics-level explanation, not a data dump |
 | **Workflow orchestration** | Describe a calibration sequence in plain English; the agent builds a dependency graph (DAG), runs each step, and passes outputs between experiments automatically |
-| **Persistent knowledge base** | The agent loads calibration notes, domain knowledge, and reusable analysis scripts from `data/knowledge/` and references them across sessions |
+| **Persistent knowledge base** | The agent loads calibration notes, domain knowledge, and reusable analysis scripts from `cookbook/data/knowledge/` and references them across sessions |
 | **Custom experiment integration** | Drop any Python script following the interface pattern into `scripts/` — the agent discovers it automatically, no configuration required |
 
 ### Agent Tools
@@ -208,12 +208,12 @@ The same chaining pattern works for any two experiments where one produces an ou
 
 ## Path 4 — Use the Knowledge Base
 
-The agent loads documents from `data/knowledge/` at the start of every session. This path shows how to leverage stored knowledge and save new findings.
+The agent loads documents from `cookbook/data/knowledge/` at the start of every session. This path shows how to leverage stored knowledge and save new findings.
 
 ### How knowledge is organized
 
 ```
-data/knowledge/
+cookbook/data/knowledge/
 ├── documents/     # Calibration notes, device specs, physics references
 ├── skills/        # Reusable analysis scripts and execution guides
 ├── memory/        # Workflow preferences and agent behavior notes
@@ -228,7 +228,7 @@ The agent automatically references these files when answering questions or plann
 What is a Rabi oscillation and why do we measure it?
 ```
 
-The agent draws on both its training knowledge and the documents in `data/knowledge/documents/` (e.g., `rabi-oscillations.md`). It explains that Rabi oscillations are driven transitions between qubit states, and that measuring them calibrates the pulse amplitude for pi and pi/2 rotations.
+The agent draws on both its training knowledge and the documents in `cookbook/data/knowledge/documents/` (e.g., `rabi-oscillations.md`). It explains that Rabi oscillations are driven transitions between qubit states, and that measuring them calibrates the pulse amplitude for pi and pi/2 rotations.
 
 ### Step 2 — Save a finding
 
@@ -236,7 +236,7 @@ The agent draws on both its training knowledge and the documents in `data/knowle
 Save what we learned about this qubit's pi-pulse amplitude so we can reference it later.
 ```
 
-The agent writes a structured note to `data/knowledge/memory/` linking the pi-amplitude value to the experiment that produced it. This persists across sessions.
+The agent writes a structured note to `cookbook/data/knowledge/memory/` linking the pi-amplitude value to the experiment that produced it. This persists across sessions.
 
 ### Step 3 — Retrieve stored knowledge
 
@@ -246,7 +246,7 @@ What do you know about previous calibration results?
 
 The agent reads from the knowledge directories and returns relevant stored findings, device parameters, and calibration notes.
 
-> **To add your own reference material:** Drop Markdown files into `data/knowledge/documents/` or `data/knowledge/skills/`. The agent picks them up automatically on the next session.
+> **To add your own reference material:** Drop Markdown files into `cookbook/data/knowledge/documents/` or `cookbook/data/knowledge/skills/`. The agent picks them up automatically on the next session.
 
 ---
 
@@ -317,15 +317,15 @@ qca workflow nodes <id>      # Node states
 | Watch workflow | `qca workflow watch <id>` |
 | Web UI | `qca serve` + `cd ui && npm run dev` → http://localhost:3000 |
 
-**Experiment data** is stored as HDF5 files in `data/experiments/` organized by date (`YYYY/MM/DD/`). Override the base path with the `QCAL_DATA_DIR` environment variable.
+**Experiment data** is stored as HDF5 files in `cookbook/data/experiments/` organized by date (`YYYY/MM/DD/`). Override the base path with the `QCAL_DATA_DIR` environment variable.
 
-**Knowledge base** persists in `data/knowledge/` with subdirectories for `documents/`, `skills/`, and `memory/`. Add your own Markdown files to any subdirectory — the agent references them automatically.
+**Knowledge base** persists in `cookbook/data/knowledge/` with subdirectories for `documents/`, `skills/`, and `memory/`. Add your own Markdown files to any subdirectory — the agent references them automatically.
 
 ---
 
 ## Adding Your Own Experiments
 
-The agent has a built-in skill for writing experiment scripts (`data/knowledge/skills/writing-experiment-scripts.md`). Just describe what you want to measure — the agent writes the script, places it in `scripts/`, and validates it for you.
+The agent has a built-in skill for writing experiment scripts (`cookbook/data/knowledge/skills/writing-experiment-scripts.md`). Just describe what you want to measure — the agent writes the script, places it in `scripts/`, and validates it for you.
 
 ### Ask the agent to create one
 
@@ -364,4 +364,4 @@ If you prefer to write scripts by hand, validate them with:
 qca experiments validate scripts/my_experiment.py --human
 ```
 
-This checks that the script has a public function with `Annotated` type hints, a `-> dict` return type, and a Google-style docstring. See `data/knowledge/skills/writing-experiment-scripts.md` for the full interface specification.
+This checks that the script has a public function with `Annotated` type hints, a `-> dict` return type, and a Google-style docstring. See `cookbook/data/knowledge/skills/writing-experiment-scripts.md` for the full interface specification.

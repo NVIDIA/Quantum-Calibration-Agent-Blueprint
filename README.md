@@ -5,10 +5,10 @@
 
 AI-powered quantum device calibration using DeepAgents framework. QCA provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
 
-![Web UI](docs/_static/images/usage/web-ui-overview.png)
+![Web UI](cookbook/_static/images/usage/web-ui-overview.png)
 *The Web UI provides a chat interface for natural language interaction with the calibration agent.*
 
-![CLI Interface](docs/_static/images/usage/cli-banner.png)
+![CLI Interface](cookbook/_static/images/usage/cli-banner.png)
 *The CLI provides a terminal-based interface for quantum calibration experiments.*
 
 ## What is QCA?
@@ -132,12 +132,12 @@ qca workflow list
 
 ## Documentation
 
-Full documentation is available in the `docs/` directory:
+Full documentation is available in the `cookbook/` directory:
 
 ```bash
 pip install -e ".[docs]"
-cd docs && make html
-# Open docs/_build/html/index.html
+cd cookbook && make html
+# Open cookbook/_build/html/index.html
 ```
 
 ## Development

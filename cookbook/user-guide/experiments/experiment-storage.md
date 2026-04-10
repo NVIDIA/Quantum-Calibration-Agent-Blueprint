@@ -5,7 +5,7 @@ QCA uses a dual-storage system combining HDF5 files for data and SQLite for fast
 ## Storage Architecture
 
 ```
-data/
+cookbook/data/
 ├── index.db                    # SQLite index for fast queries
 └── experiments/                # HDF5 files organized by date
     └── YYYY/
@@ -37,14 +37,14 @@ data/
 When an experiment completes, it's saved to:
 
 ```
-data/experiments/YYYY/MM/DD/HHMMSS_type.h5
+cookbook/data/experiments/YYYY/MM/DD/HHMMSS_type.h5
 ```
 
 Example:
 ```
-data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
-data/experiments/2026/03/23/143128_rabi_amplitude.h5
-data/experiments/2026/03/23/150234_qubit_spectroscopy.h5
+cookbook/data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
+cookbook/data/experiments/2026/03/23/143128_rabi_amplitude.h5
+cookbook/data/experiments/2026/03/23/150234_qubit_spectroscopy.h5
 ```
 
 The filename includes:
@@ -163,7 +163,7 @@ Example output:
     "snr": 42.3
   },
   "notes": "",
-  "file_path": "data/experiments/2026/03/23/143052_qubit_spectroscopy.h5"
+  "file_path": "cookbook/data/experiments/2026/03/23/143052_qubit_spectroscopy.h5"
 }
 ```
 
@@ -334,7 +334,7 @@ qca history reindex
 
 This:
 1. Clears the SQLite index
-2. Scans all HDF5 files in `data/experiments/`
+2. Scans all HDF5 files in `cookbook/data/experiments/`
 3. Rebuilds the index from HDF5 metadata
 
 Use this if:
@@ -346,17 +346,17 @@ Use this if:
 
 **Option 1: Backup entire data directory**
 ```bash
-tar -czf data-backup-$(date +%Y%m%d).tar.gz data/
+tar -czf data-backup-$(date +%Y%m%d).tar.gz cookbook/data/
 ```
 
 **Option 2: Backup specific date range**
 ```bash
-tar -czf data-backup-202603.tar.gz data/experiments/2026/03/
+tar -czf data-backup-202603.tar.gz cookbook/data/experiments/2026/03/
 ```
 
 **Option 3: Export to external storage**
 ```bash
-rsync -av data/experiments/ /mnt/external/qca-data/
+rsync -av cookbook/data/experiments/ /mnt/external/qca-cookbook/data/
 ```
 
 ### Archiving Old Experiments
@@ -364,7 +364,7 @@ rsync -av data/experiments/ /mnt/external/qca-data/
 Move old experiments to archive:
 ```bash
 mkdir -p archive/2026/
-mv data/experiments/2026/01/ archive/2026/
+mv cookbook/data/experiments/2026/01/ archive/2026/
 qca history reindex  # Update index
 ```
 
@@ -477,13 +477,13 @@ dataset.attrs["format"] = "png"
 
 ```bash
 # View file structure
-h5dump -n data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
+h5dump -n cookbook/data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
 
 # View metadata
-h5dump -a id data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
+h5dump -a id cookbook/data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
 
 # View dataset
-h5dump -d /arrays/frequencies data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
+h5dump -d /arrays/frequencies cookbook/data/experiments/2026/03/23/143052_qubit_spectroscopy.h5
 ```
 
 ### Using h5py (Python)
@@ -491,7 +491,7 @@ h5dump -d /arrays/frequencies data/experiments/2026/03/23/143052_qubit_spectrosc
 ```python
 import h5py
 
-with h5py.File("data/experiments/2026/03/23/143052_qubit_spectroscopy.h5", "r") as f:
+with h5py.File("cookbook/data/experiments/2026/03/23/143052_qubit_spectroscopy.h5", "r") as f:
     # View attributes
     print(f.attrs["id"])
     print(f.attrs["type"])
