@@ -3,7 +3,7 @@
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 
-Part of [NVIDIA Ising Calibration](https://github.com/NVIDIA/Ising-Calibration). This is a reference agent blueprint for AI-powered quantum device calibration using the [DeepAgents](https://github.com/NVIDIA/DeepAgents) framework. It provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
+Part of [NVIDIA Ising Calibration](https://github.com/NVIDIA/Ising-Calibration). This is a reference agent blueprint for AI-powered quantum device calibration. It provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
 
 ![Web UI](docs/_static/images/usage/web-ui-overview.png)
 *The Web UI provides a chat interface for natural language interaction with the calibration agent.*
