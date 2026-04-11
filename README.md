@@ -1,9 +1,9 @@
-# QCA - Quantum Calibration Agent
+# Quantum Calibration Agent Blueprint
 
 ![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
 ![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
 
-AI-powered quantum device calibration using DeepAgents framework. QCA provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
+Part of [NVIDIA Ising Calibration](https://github.com/NVIDIA/Ising-Calibration). This is a reference agent blueprint for AI-powered quantum device calibration using the [DeepAgents](https://github.com/NVIDIA/DeepAgents) framework. It provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
 
 ![Web UI](docs/_static/images/usage/web-ui-overview.png)
 *The Web UI provides a chat interface for natural language interaction with the calibration agent.*
@@ -11,9 +11,9 @@ AI-powered quantum device calibration using DeepAgents framework. QCA provides a
 ![CLI Interface](docs/_static/images/usage/cli-banner.png)
 *The CLI provides a terminal-based interface for quantum calibration experiments.*
 
-## What is QCA?
+## What is this?
 
-QCA (Quantum Calibration Agent) is an AI-powered framework that combines:
+This is a reference agent blueprint for quantum device calibration that combines:
 
 - **Intelligent Experiment Discovery**: Automatically find and understand available quantum calibration experiments
 - **AI-Driven Execution**: Run experiments through natural language commands or structured workflows
