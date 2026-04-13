@@ -1,0 +1,699 @@
+---
+title: "CLI Overview"
+description: ""
+position: 2
+---
+The `qca` command-line interface provides comprehensive access to all QCA functionality, from running experiments to managing workflows and analyzing data.
+
+## Main Command
+
+The main `qca` command launches the interactive TUI by default, but supports various modes and global options.
+
+### Basic Usage
+
+```bash
+# Launch interactive TUI (default)
+qca
+
+# Start backend server
+qca serve
+
+# Run a single task non-interactively
+qca -n "List available experiments"
+
+# Resume a previous conversation
+qca -r <thread_id>
+
+# Start TUI with an initial prompt
+qca -m "Run spectroscopy on Q0"
+
+# Check version
+qca --version
+```
+
+### Global Options
+
+These options modify how QCA executes:
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--non-interactive` | `-n` | Execute a single task and exit (non-interactive mode) |
+| `--message` | `-m` | Initial prompt to submit when TUI starts |
+| `--resume` | `-r` | Resume conversation by thread ID |
+| `--model` | | Override default model (default: Nemotron 49b) |
+| `--quiet` | `-q` | Output only agent response to stdout (for piping, requires `-n`) |
+| `--no-stream` | | Buffer full response before output (requires `-n`) |
+| `--auto-approve` | `-y` | Auto-approve all tool calls without prompting |
+| `--version` | `-v` | Show version and exit |
+| `--help` | | Show help and exit |
+
+Note: The `-h` shorthand is reserved for `--human` (human-readable output) in subcommands, not `--help`.
+
+### Examples with Global Options
+
+```bash
+# Non-interactive mode with quiet output (for scripts)
+qca -n "Get stats for array signal in experiment 20240315_120000_QubitSpec" -q
+
+# Non-interactive with buffered output
+qca -n "List experiments" --no-stream
+
+# Auto-approve all actions in TUI
+qca -y
+
+# Use specific model
+qca --model nvidia/llama-3.3-nemotron-super-49b-v1.5
+```
+
+## Subcommand Groups
+
+QCA organizes functionality into four main subcommand groups:
+
+1. **experiments**: Experiment discovery and execution
+2. **history**: Experiment history management
+3. **data**: Data access and analysis
+4. **workflow**: Workflow management and monitoring
+
+## Experiments Commands
+
+Discover, validate, and run quantum calibration experiments.
+
+### experiments list
+
+List all available experiments discovered from the scripts directory.
+
+```bash
+# JSON output (default)
+qca experiments list
+
+# Human-readable table
+qca experiments list --human
+```
+
+**Output (human-readable):**
+```
+Available Experiments
+┌────────────────────────┬──────────────────────────┬────────────┐
+│ Name                   │ Description              │ Parameters │
+├────────────────────────┼──────────────────────────┼────────────┤
+│ qubit_spectroscopy      │ Single-qubit spec scan   │ 5          │
+│ ResonatorSweep         │ Resonator transmission   │ 4          │
+└────────────────────────┴──────────────────────────┴────────────┘
+```
+
+### experiments schema
+
+Show parameter schema for a specific experiment.
+
+```bash
+# JSON output (default)
+qca experiments schema qubit_spectroscopy
+
+# Human-readable table
+qca experiments schema qubit_spectroscopy --human
+```
+
+**Output shows:**
+- Experiment name and description
+- Parameter name, type, required status
+- Default values and valid ranges
+
+### experiments validate
+
+Validate a Python script as a valid lab experiment.
+
+```bash
+# Validate a script
+qca experiments validate /path/to/script.py
+
+# Human-readable output with detailed checks
+qca experiments validate /path/to/script.py --human
+```
+
+**Validation checks:**
+- File exists and is a `.py` file
+- Contains a public function (no underscore prefix)
+- Function has `-> dict` return type annotation
+- Function has typed parameters
+- Parameters use `Annotated` for ranges (recommended)
+
+### experiments run
+
+Run an experiment and store results.
+
+```bash
+# Run with parameters as JSON
+qca experiments run qubit_spectroscopy \
+  --params '{"center_freq": 4.8, "span": 0.2, "num_points": 101, "drive_amplitude": 0.1, "num_averages": 1000}'
+
+# Add user notes
+qca experiments run qubit_spectroscopy \
+  --params '{"center_freq": 4.8, "span": 0.2}' \
+  --notes "Testing new calibration algorithm"
+
+# Set custom timeout (default: 300s)
+qca experiments run qubit_spectroscopy \
+  --params '{"center_freq": 4.8, "span": 0.2}' \
+  --timeout 600
+
+# Human-readable output
+qca experiments run qubit_spectroscopy \
+  --params '{"center_freq": 4.8, "span": 0.2}' \
+  --human
+```
+
+**Options:**
+- `--params`, `-p`: Parameters as JSON string (required)
+- `--timeout`: Timeout in seconds (default: 300)
+- `--notes`: User notes for this run
+- `--human`, `-h`: Human-readable output
+
+## History Commands
+
+Query and manage experiment history stored in the data directory.
+
+### history list
+
+List past experiments with optional filtering.
+
+```bash
+# List last 10 experiments (default)
+qca history list
+
+# List last 20 experiments
+qca history list --last 20
+
+# Filter by experiment type
+qca history list --type qubit_spectroscopy
+
+# Human-readable table
+qca history list --human
+```
+
+**Output (human-readable):**
+```
+Experiment History (last 10)
+┌──────────────────────────┬──────────────────┬────────┬─────────────────────┬─────────┐
+│ ID                       │ Type             │ Target │ Timestamp           │ Status  │
+├──────────────────────────┼──────────────────┼────────┼─────────────────────┼─────────┤
+│ 20240315_120000_qubit...│ qubit_spectroscopy│ Q0     │ 2024-03-15 12:00:00 │ success │
+└──────────────────────────┴──────────────────┴────────┴─────────────────────┴─────────┘
+```
+
+**Options:**
+- `--type`, `-t`: Filter by experiment type
+- `--last`, `-n`: Limit to last N experiments (default: 10)
+- `--human`, `-h`: Human-readable output
+
+### history show
+
+Show full metadata for a specific experiment.
+
+```bash
+# JSON output (default)
+qca history show 20240315_120000_qubit_spectroscopy
+
+# Human-readable output
+qca history show 20240315_120000_qubit_spectroscopy --human
+```
+
+**Output shows:**
+- Experiment ID, type, timestamp, status
+- Target qubit (if applicable)
+- Input parameters
+- Results (scalar values)
+- Arrays (list of array names)
+- Plots (list of plot names)
+- User notes
+- File path
+
+### history delete
+
+Delete an experiment from storage.
+
+```bash
+# Delete with confirmation
+qca history delete 20240315_120000_qubit_spectroscopy
+
+# Force delete without confirmation
+qca history delete 20240315_120000_qubit_spectroscopy --force
+```
+
+**Warning:** This permanently removes the experiment HDF5 file and SQLite index entry.
+
+### history reindex
+
+Rebuild the SQLite index from HDF5 files.
+
+```bash
+# Scan data directory and rebuild index
+qca history reindex
+```
+
+Useful after manually adding/removing HDF5 files or if the index becomes corrupted.
+
+## Data Commands
+
+Access and analyze experiment data arrays and plots.
+
+### data arrays
+
+List all arrays stored in an experiment.
+
+```bash
+# JSON output (default)
+qca data arrays 20240315_120000_qubit_spectroscopy
+
+# Human-readable table
+qca data arrays 20240315_120000_qubit_spectroscopy --human
+```
+
+**Output (human-readable):**
+```
+Arrays in 20240315_120000_qubit_spectroscopy
+┌───────────┬──────────┬──────────┐
+│ Name      │ Shape    │ Type     │
+├───────────┼──────────┼──────────┤
+│ frequency │ (100,)   │ float64  │
+│ signal    │ (100,)   │ complex  │
+└───────────┴──────────┴──────────┘
+```
+
+### data get
+
+Retrieve array data (full or sliced).
+
+```bash
+# Get full array (JSON)
+qca data get 20240315_120000_qubit_spectroscopy frequency
+
+# Get sliced array (indices 0 to 10)
+qca data get 20240315_120000_qubit_spectroscopy signal --slice 0:10
+
+# Human-readable output
+qca data get 20240315_120000_qubit_spectroscopy frequency --human
+```
+
+**Options:**
+- `--slice`, `-s`: Slice range in format START:END
+- `--human`, `-h`: Human-readable output
+
+### data stats
+
+Get statistical summary of an array.
+
+```bash
+# JSON output (default)
+qca data stats 20240315_120000_qubit_spectroscopy signal
+
+# Human-readable output
+qca data stats 20240315_120000_qubit_spectroscopy signal --human
+```
+
+**Output (human-readable):**
+```
+Array: signal
+Min: 0.123
+Max: 0.987
+Mean: 0.456
+Std: 0.234
+Count: 100
+```
+
+### data plots
+
+List all plots in an experiment.
+
+```bash
+# JSON output (default)
+qca data plots 20240315_120000_qubit_spectroscopy
+
+# Human-readable table
+qca data plots 20240315_120000_qubit_spectroscopy --human
+```
+
+### data plot
+
+Extract a plot (PNG or Plotly JSON).
+
+```bash
+# View plot info
+qca data plot 20240315_120000_qubit_spectroscopy spectrum
+
+# Save PNG to file
+qca data plot 20240315_120000_qubit_spectroscopy spectrum --output spectrum.png
+
+# Save Plotly JSON to file
+qca data plot 20240315_120000_qubit_spectroscopy spectrum --output spectrum.json
+```
+
+## Workflow Commands
+
+Manage and monitor multi-step calibration workflows.
+
+### workflow list
+
+List all workflows with status.
+
+```bash
+# JSON output (default)
+qca workflow list
+
+# Human-readable table
+qca workflow list --human
+```
+
+**Output (human-readable):**
+```
+Workflows
+┌───────────────┬─────────────────┬──────────┬───────┬────────────┐
+│ ID            │ Name            │ Status   │ Nodes │ Created    │
+├───────────────┼─────────────────┼──────────┼───────┼────────────┤
+│ qcal-001      │ Full Calib      │ running  │ 5     │ 2024-03-15 │
+└───────────────┴─────────────────┴──────────┴───────┴────────────┘
+```
+
+### workflow show
+
+Show full workflow definition including nodes and global parameters.
+
+```bash
+# JSON output (default)
+qca workflow show qcal-001
+
+# Human-readable output
+qca workflow show qcal-001 --human
+```
+
+**Output shows:**
+- Workflow ID, name, description, status
+- Node count and state summary
+- Global parameters
+- Completion criteria
+
+### workflow status
+
+Show runtime status and progress.
+
+```bash
+# JSON output (default)
+qca workflow status qcal-001
+
+# Human-readable output with progress bar
+qca workflow status qcal-001 --human
+```
+
+**Output (human-readable):**
+```
+Workflow: qcal-001
+Status: ● RUNNING
+Progress: [████████████████░░░░░░░░░░░░░░] 60.0% (3/5 nodes)
+
+Current Node: resonator_sweep
+  Started: 2024-03-15T12:30:00Z
+
+Suggestions:
+  1. continue: All systems normal
+```
+
+### workflow validate
+
+Validate workflow structure and dependencies.
+
+```bash
+# JSON output (default)
+qca workflow validate qcal-001
+
+# Human-readable output
+qca workflow validate qcal-001 --human
+```
+
+**Validation checks:**
+- Required fields present (id, nodes)
+- Each node has id and experiment/name
+- Dependencies reference valid node IDs
+- No circular dependencies in DAG
+
+**Output (human-readable):**
+```
+✓ Workflow 'qcal-001' is valid
+```
+
+Or if invalid:
+```
+✗ Workflow 'qcal-001' has 2 issue(s):
+  • Node 'step3': Dependency 'step5' not found
+  • Circular dependency detected in workflow graph
+```
+
+### workflow history
+
+Show workflow execution history.
+
+```bash
+# Show all history events (JSON)
+qca workflow history qcal-001
+
+# Show last 10 events
+qca workflow history qcal-001 --last 10
+
+# Human-readable table
+qca workflow history qcal-001 --human
+```
+
+**Output (human-readable):**
+```
+History for qcal-001
+┌─────────────────────┬─────────────┬──────────────┬──────────────────┐
+│ Timestamp           │ Event       │ Node         │ Details          │
+├─────────────────────┼─────────────┼──────────────┼──────────────────┤
+│ 2024-03-15 12:00:00 │ node_start  │ resonator    │ run=1            │
+│ 2024-03-15 12:05:00 │ node_finish │ resonator    │ result=success   │
+└─────────────────────┴─────────────┴──────────────┴──────────────────┘
+```
+
+### workflow nodes
+
+List all nodes with state and dependencies.
+
+```bash
+# JSON output (default)
+qca workflow nodes qcal-001
+
+# Human-readable table
+qca workflow nodes qcal-001 --human
+```
+
+**Output (human-readable):**
+```
+Nodes in qcal-001
+┌─────────┬──────────────┬─────────┬──────────────┬─────────────────┬──────┐
+│ ID      │ Name         │ State   │ Dependencies │ Experiment      │ Runs │
+├─────────┼──────────────┼─────────┼──────────────┼─────────────────┼──────┤
+│ step1   │ Resonator    │ success │ -            │ ResonatorSweep  │ 1    │
+│ step2   │ Qubit Spec   │ running │ step1        │ QubitSpec       │ 1    │
+│ step3   │ Rabi         │ pending │ step2        │ RabiOscillation │ 0    │
+└─────────┴──────────────┴─────────┴──────────────┴─────────────────┴──────┘
+```
+
+### workflow watch
+
+Live-watch workflow progress with auto-updating display.
+
+```bash
+# Watch with default 2-second interval
+qca workflow watch qcal-001
+
+# Watch with custom interval (in seconds)
+qca workflow watch qcal-001 --interval 5
+```
+
+**Output (live-updating):**
+```
+Status: ● RUNNING
+Progress: [████████████████░░░░░░░░░░░░░░] 60.0%
+Nodes: 3 ✓  0 ✗  1 ●  1 ○  0 ○
+Current: Qubit Spectroscopy
+         Attempt 1
+→ node_start step2
+→ extraction_complete step2
+
+Last updated: 12:34:56
+```
+
+Press Ctrl+C to stop watching. The display updates automatically until the workflow completes or fails.
+
+## Common Workflows
+
+### Running a Quick Experiment
+
+```bash
+# 1. Find the experiment you want
+qca experiments list --human
+
+# 2. View its parameters
+qca experiments schema qubit_spectroscopy --human
+
+# 3. Run it
+qca experiments run qubit_spectroscopy \
+  --params '{"target": "Q0", "start": 4900.0, "stop": 5100.0, "step": 2.0, "num_avs": 1000}' \
+  --human
+
+# 4. View results
+qca history show <experiment_id> --human
+```
+
+### Viewing Experiment History
+
+```bash
+# 1. List recent experiments
+qca history list --last 20 --human
+
+# 2. Filter by type
+qca history list --type qubit_spectroscopy --human
+
+# 3. View details
+qca history show 20240315_120000_qubit_spectroscopy --human
+
+# 4. Extract data
+qca data arrays 20240315_120000_qubit_spectroscopy --human
+qca data get 20240315_120000_qubit_spectroscopy signal --human
+```
+
+### Working with Workflows
+
+```bash
+# 1. List workflows
+qca workflow list --human
+
+# 2. Check status
+qca workflow status qcal-001 --human
+
+# 3. Watch progress
+qca workflow watch qcal-001
+
+# 4. View node details
+qca workflow nodes qcal-001 --human
+
+# 5. Check history
+qca workflow history qcal-001 --last 20 --human
+```
+
+## Tips and Best Practices
+
+### Output Formats
+
+Most commands support both JSON (default) and human-readable output:
+- Use JSON for scripting and programmatic parsing
+- Use `--human` for interactive terminal use
+
+```bash
+# For scripts/automation
+result=$(qca experiments list)
+echo "$result" | jq '.experiments[0].name'
+
+# For humans
+qca experiments list --human
+```
+
+### Piping and Scripting
+
+Use `-n` with `-q` for clean output suitable for piping:
+
+```bash
+# Get only the response text
+qca -n "What's the resonant frequency?" -q
+
+# Use in scripts
+freq=$(qca -n "Extract resonant frequency from latest experiment" -q)
+echo "Frequency: $freq"
+```
+
+### Filtering and Limiting
+
+Use filters to find what you need:
+
+```bash
+# Last 50 experiments
+qca history list --last 50
+
+# Only spectroscopy experiments
+qca history list --type qubit_spectroscopy
+
+# Specific date range (use JSON output and jq)
+qca history list --last 100 | jq '.experiments[] | select(.timestamp | startswith("2024-03"))'
+```
+
+### Working with Arrays
+
+Extract and analyze data efficiently:
+
+```bash
+# Check available arrays
+qca data arrays <experiment_id> --human
+
+# Get statistics first
+qca data stats <experiment_id> signal --human
+
+# Extract full array if needed
+qca data get <experiment_id> signal > signal.json
+
+# Or slice for large arrays
+qca data get <experiment_id> signal --slice 100:200
+```
+
+### Workflow Monitoring
+
+Monitor long-running workflows:
+
+```bash
+# Quick status check
+qca workflow status qcal-001 --human
+
+# Continuous monitoring
+qca workflow watch qcal-001
+
+# Check logs in another terminal
+qca workflow history qcal-001 --human
+
+# See what's running
+qca workflow nodes qcal-001 --human | grep running
+```
+
+## Getting Help
+
+Every command and subcommand has built-in help:
+
+```bash
+# Main help
+qca --help
+
+# Group help
+qca experiments --help
+qca history --help
+qca data --help
+qca workflow --help
+
+# Command-specific help
+qca experiments run --help
+qca workflow status --help
+qca data get --help
+```
+
+## Exit Codes
+
+Commands return standard exit codes:
+- 0: Success
+- 1: Error (not found, validation failed, etc.)
+- 2: Usage error (invalid arguments)
+
+Use in scripts:
+
+```bash
+if qca experiments validate script.py; then
+    echo "Valid experiment"
+else
+    echo "Invalid experiment"
+    exit 1
+fi
+```

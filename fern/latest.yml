@@ -1,0 +1,24 @@
+navigation:
+  - section: "Quick Start"
+    skip-slug: true
+    contents:
+      - folder: ../docs/latest/quick-start
+        title: "Quick Start"
+        title-source: frontmatter
+  - section: "User Guide"
+    skip-slug: true
+    contents:
+      - folder: ../docs/latest/user-guide
+        title: "User Guide"
+        title-source: frontmatter
+      - page: "Workflow System Overview"
+        path: ../docs/latest/user-guide/workflows/index.mdx
+      - folder: ../docs/latest/user-guide/experiments
+        title: "Experiments Overview"
+        title-source: frontmatter
+  - section: "Developer Guide"
+    skip-slug: true
+    contents:
+      - folder: ../docs/latest/developer-guide
+        title: "Developer Guide"
+        title-source: frontmatter
