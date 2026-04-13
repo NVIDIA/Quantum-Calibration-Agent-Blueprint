@@ -1,7 +1,7 @@
 # Quantum Calibration Agent Blueprint
 
-![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)
-![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)
+![Python 3.11+](https://img.shields.io/badge/Python-3.11+-blue.svg)
+![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)
 
 Part of [NVIDIA Ising](https://github.com/NVIDIA/Ising). This is a reference agent blueprint for AI-powered quantum device calibration. It provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
 
