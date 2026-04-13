@@ -5,10 +5,10 @@
 
 Part of [NVIDIA Ising Calibration](https://github.com/NVIDIA/Ising-Calibration). This is a reference agent blueprint for AI-powered quantum device calibration. It provides an intelligent agent interface for discovering, executing, and analyzing quantum calibration experiments with support for automated workflows and vision-based analysis.
 
-![Web UI](docs/_static/images/usage/web-ui-overview.png)
+![Web UI](docs/latest/_static/images/usage/web-ui-overview.png)
 *The Web UI provides a chat interface for natural language interaction with the calibration agent.*
 
-![CLI Interface](docs/_static/images/usage/cli-banner.png)
+![CLI Interface](docs/latest/_static/images/usage/cli-banner.png)
 *The CLI provides a terminal-based interface for quantum calibration experiments.*
 
 ## What is this?
