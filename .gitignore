@@ -1,0 +1,73 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+eggs/
+*.whl
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+ENV/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+*.cover
+.hypothesis/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# MyPy / type checkers
+.mypy_cache/
+.pytype/
+
+# Ruff
+.ruff_cache/
+
+# UI (Next.js / Node.js)
+ui/node_modules/
+ui/.next/
+ui/out/
+ui/.env
+ui/.env.local
+ui/.env.development.local
+ui/.env.test.local
+ui/.env.production.local
+
+# UI testing
+ui/test-results/
+ui/playwright-report/
+ui/coverage/
+
+# Fern
+fern/node_modules/
+fern/.fern/
+
+# Docs build
+docs/_build/
