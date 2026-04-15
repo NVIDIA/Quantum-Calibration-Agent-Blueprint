@@ -1,8 +1,8 @@
 instances:
-  - url: https://nvidia-ising-calibration.docs.buildwithfern.com/ising-calibration
-    custom-domain: docs.nvidia.com/ising-calibration
+  - url: https://nvidia-q-c-a.docs.buildwithfern.com/quantum-calibration-agent
+    custom-domain: docs.nvidia.com/quantum-calibration-agent
 
-title: NVIDIA Ising Calibration
+title: NVIDIA Quantum Calibration Agent Blueprint
 
 footer: ./components/CustomFooter.tsx
 
@@ -51,7 +51,7 @@ experimental:
   basepath-aware: true
 
 products:
-  - display-name: Ising Calibration
+  - display-name: Quantum Calibration Agent Blueprint
     slug: /
     path: latest.yml
     versions:
