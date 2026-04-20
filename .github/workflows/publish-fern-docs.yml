@@ -56,14 +56,6 @@ jobs:
       - name: Install Fern CLI
         run: npm install -g fern-api
 
-      # Libraries in docs.yml write under fern/product-docs/ (gitignored).
-      # Run before publish so the Full Library Reference is included in the site.
-      - name: Generate library reference MDX (autodocs)
-        env:
-          FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
-        working-directory: ./fern
-        run: fern docs md generate
-
       - name: Publish Docs
         env:
           FERN_TOKEN: ${{ secrets.DOCS_FERN_TOKEN }}
