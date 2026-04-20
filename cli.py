@@ -162,10 +162,10 @@ def _patch_colors():
         self.theme = "qca-dark"
     DeepAgentsApp.__init__ = _patched_init
 
-    # Patch config.COLORS for primary/agent colors
-    config.COLORS["tool"] = TOOL_COLOR
-    config.COLORS["primary"] = NVIDIA_GREEN
-    config.COLORS["agent"] = NVIDIA_GREEN
+    # Patch theme constants for primary/tool colors
+    from deepagents_cli import theme
+    theme.PRIMARY = NVIDIA_GREEN
+    theme.TOOL_HEADER = TOOL_COLOR
 
     # Patch loading.py spinner color - both CSS and Python
     from deepagents_cli.widgets import loading
