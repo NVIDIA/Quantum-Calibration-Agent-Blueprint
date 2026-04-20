@@ -359,29 +359,19 @@ def _patch_welcome():
     """Patch deepagents-cli welcome message."""
     from deepagents_cli.widgets import welcome
 
-    def _qca_build_welcome_footer():
+    def _qca_build_welcome_footer(*, primary_color: str = "#10b981", tip=None):
         import random
         from textual.content import Content
-        from deepagents_cli.widgets.welcome import (
-            _TIPS,
-            COLORS,
-            get_glyphs,
-            newline_shortcut,
-        )
+        from deepagents_cli.widgets.welcome import _TIPS
 
-        tip = random.choice(_TIPS)
-        bullet = get_glyphs().bullet
+        if tip is None:
+            tip = random.choice(_TIPS)
         return Content.assemble(
             (
                 "\nReady to calibrate! What quantum experiment shall we run?\n",
-                COLORS["primary"],
+                primary_color,
             ),
-            (f"Tip: {tip}\n", "dim italic"),
-            (
-                f"Enter send {bullet} {newline_shortcut()} newline "
-                f"{bullet} @ files {bullet} / commands",
-                "dim",
-            ),
+            (f"Tip: {tip}", "dim italic"),
         )
 
     welcome.build_welcome_footer = _qca_build_welcome_footer
