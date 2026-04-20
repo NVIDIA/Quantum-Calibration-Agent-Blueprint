@@ -70,20 +70,23 @@ def create_chat_model(model_name: str):
 
     Uses official langchain-nvidia-ai-endpoints for NVIDIA models,
     init_chat_model for other providers.
+
+    Returns:
+        Tuple of (model, supports_streaming).
     """
     if model_name.startswith("nvidia:"):
         from langchain_nvidia_ai_endpoints import ChatNVIDIA
         return ChatNVIDIA(
             model=model_name[7:],  # strip "nvidia:" prefix
             api_key=os.environ.get("NVIDIA_API_KEY"),
-            disable_streaming=True,  # NVIDIA has truncation bug with streaming
-        )
+            disable_streaming=True,
+        ), False
     else:
         from langchain.chat_models import init_chat_model
         params = {}
         if model_name.startswith("openai:"):
             params["use_responses_api"] = False
-        return init_chat_model(model_name, **params)
+        return init_chat_model(model_name, **params), True
 
 # Rich console for output
 console = Console()
@@ -723,7 +726,7 @@ def main(
         tools = [find, lab, run_experiment, vlm_inspect, workflow]
 
         effective_model = model or DEFAULT_MODEL
-        chat_model = create_chat_model(effective_model)
+        chat_model, supports_streaming = create_chat_model(effective_model)
 
         agent, _backend = create_cli_agent(
             model=chat_model,
@@ -737,7 +740,7 @@ def main(
 
         exit_code = asyncio.run(
             _run_non_interactive(
-                agent, non_interactive, quiet=quiet, verbose=verbose, stream=not no_stream
+                agent, non_interactive, quiet=quiet, verbose=verbose, stream=not no_stream and supports_streaming
             )
         )
         raise typer.Exit(exit_code)
@@ -753,7 +756,7 @@ def main(
         tools = [find, lab, run_experiment, vlm_inspect, workflow]
 
         effective_model = model or DEFAULT_MODEL
-        chat_model = create_chat_model(effective_model)
+        chat_model, _supports_streaming = create_chat_model(effective_model)
 
         agent, backend = create_cli_agent(
             model=chat_model,
