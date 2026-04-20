@@ -1,3 +1,8 @@
+---
+name: experiment-execution
+description: Reference guide for running individual quantum calibration experiments and interpreting their results. Use when the user asks to run a single experiment (e.g. resonator spectroscopy, qubit spectroscopy, T1, T2), inspect experiment plots with the VLM, or query experiment history and schemas via the lab tool.
+---
+
 # Experiment Execution Guide
 
 Reference guide for running and analyzing quantum calibration experiments.

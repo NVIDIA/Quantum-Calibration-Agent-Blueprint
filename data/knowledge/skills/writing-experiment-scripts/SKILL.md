@@ -1,3 +1,8 @@
+---
+name: writing-experiment-scripts
+description: Author new experiment scripts that are compatible with the lab system's auto-discovery. Use when the user asks to create a new experiment type, add a custom measurement, or write a Python script that should be discoverable via the `lab` and `run_experiment` tools. Covers required function signatures, type hints, docstrings, and return formats.
+---
+
 # Writing Experiment Scripts
 
 How to create experiment scripts compatible with the lab system.

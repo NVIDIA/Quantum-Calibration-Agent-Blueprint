@@ -1,3 +1,8 @@
+---
+name: workflow-planning
+description: Plan a new calibration workflow by discussing experiment sequences, success/failure criteria, and extracted parameters with the user before any files are created. Use when the user asks to plan, design, or create a new calibration sequence, or to build a multi-step workflow for a qubit or device. Requires explicit user confirmation before writing workflow files.
+---
+
 # Workflow Planning
 
 Create calibration workflows through discussion with the user. A workflow defines a sequence of operations with dependencies.

@@ -1,3 +1,8 @@
+---
+name: vlm-configuration
+description: Configure the Vision Language Model (VLM) used for analyzing experiment plots. Use when the user asks to change the VLM provider or model, adjust temperature or max_tokens, enable or disable thinking mode, or troubleshoot VLM-related behavior in config.yaml.
+---
+
 # VLM Configuration
 
 The VLM (Vision Language Model) is configured in `config.yaml` under the `vlm` section.

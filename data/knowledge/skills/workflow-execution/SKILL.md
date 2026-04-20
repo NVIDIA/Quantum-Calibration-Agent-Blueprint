@@ -1,3 +1,8 @@
+---
+name: workflow-execution
+description: Execute a previously planned calibration workflow node by node, tracking progress and handling failures. Use when the user asks to run, resume, or continue an existing workflow, or to execute a sequence of calibration steps that has already been defined in data/workflows/.
+---
+
 # Workflow Execution
 
 Execute a planned workflow node by node, tracking progress and handling failures.

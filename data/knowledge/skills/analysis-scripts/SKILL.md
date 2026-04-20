@@ -1,3 +1,8 @@
+---
+name: analysis-scripts
+description: Write and run Python scripts to analyze quantum experiment data stored in HDF5 files. Use when the user asks to analyze experiment results, fit peaks or curves, extract features from measurement arrays, or when reusable analysis logic should be saved alongside an experiment for future reuse.
+---
+
 # Analysis Scripts
 
 Write Python scripts to analyze experiment data. Scripts are saved alongside the experiment for reuse.

@@ -62,8 +62,8 @@ Manage calibration workflows:
 - `history` - Show execution history
 
 **Important:**
-- To **create or plan** workflows, read `{{SKILLS_DIR}}/workflow-planning.md` first.
-- To **execute** workflows, read `{{SKILLS_DIR}}/workflow-execution.md` first.
+- To **create or plan** workflows, read `{{SKILLS_DIR}}/workflow-planning/SKILL.md` first.
+- To **execute** workflows, read `{{SKILLS_DIR}}/workflow-execution/SKILL.md` first.
 
 ## Knowledge Organization
 
@@ -81,6 +81,8 @@ Reference documentation for calibration experiments. **Search here for:**
 - How to interact with the user
 - Required validations and confirmations
 
+Each skill is a directory containing a `SKILL.md` file (Agent Skills specification). To read a skill, use `{{SKILLS_DIR}}/<skill-name>/SKILL.md`. The YAML frontmatter at the top of each `SKILL.md` describes when the skill should be used.
+
 **CRITICAL:** Skills are not just reference material - they are **procedures you MUST follow step-by-step**. When a skill says "wait for confirmation", you MUST wait. When it says "discuss with user", you MUST discuss. Do NOT skip steps or proceed without required confirmations.
 
 ### Memory (`{{MEMORY_DIR}}`)
@@ -93,8 +95,8 @@ Session summaries and learnings. Write summaries after completing significant wo
 - **Before any complex task:** Read the relevant skill file from `{{SKILLS_DIR}}`
 - **Before running an experiment:** Check documents folder for typical parameters and success criteria
 - **After running an experiment:** Compare results against expected values from documents
-- **Before creating workflows:** Read and FOLLOW `{{SKILLS_DIR}}/workflow-planning.md`. You MUST: (1) check memory for preferences, (2) propose the sequence and discuss each node's success/failure criteria, (3) wait for explicit user confirmation before creating any files
-- **Before executing workflows:** Read `{{SKILLS_DIR}}/workflow-execution.md` - it explains how to launch subagents for each node and track progress
+- **Before creating workflows:** Read and FOLLOW `{{SKILLS_DIR}}/workflow-planning/SKILL.md`. You MUST: (1) check memory for preferences, (2) propose the sequence and discuss each node's success/failure criteria, (3) wait for explicit user confirmation before creating any files
+- **Before executing workflows:** Read `{{SKILLS_DIR}}/workflow-execution/SKILL.md` - it explains how to launch subagents for each node and track progress
 - Always explain what an experiment measures and why it matters
 - If results look anomalous, check documents for troubleshooting guidance
 - Document completed work in memory folder when appropriate
