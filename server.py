@@ -797,25 +797,55 @@ async def chat_resume(request: ResumeRequest):
 
 
 def _parse_md_file(md_file: Path, folder: str = None) -> dict | None:
-    """Parse markdown file metadata."""
+    """Parse markdown file metadata.
+
+    Supports Agent Skills specification SKILL.md files that begin with a
+    YAML frontmatter block (--- ... ---). For skills, the id and filename
+    are derived from the parent directory (the skill name) rather than the
+    file stem, since every skill file is literally named SKILL.md.
+    """
     try:
         content = md_file.read_text(encoding="utf-8")
         lines = content.split("\n")
 
-        title = md_file.stem.replace("-", " ").title()
-        for line in lines:
+        # Strip YAML frontmatter, if present, and extract name/description.
+        fm_name = None
+        fm_description = None
+        body_lines = lines
+        if lines and lines[0].strip() == "---":
+            end_idx = None
+            for i in range(1, len(lines)):
+                if lines[i].strip() == "---":
+                    end_idx = i
+                    break
+            if end_idx is not None:
+                for fm_line in lines[1:end_idx]:
+                    if fm_line.startswith("name:"):
+                        fm_name = fm_line.split(":", 1)[1].strip()
+                    elif fm_line.startswith("description:"):
+                        fm_description = fm_line.split(":", 1)[1].strip()
+                body_lines = lines[end_idx + 1 :]
+
+        # Skills live at skills/<name>/SKILL.md — use the parent dir name
+        # as the identifier, since the file stem is always "SKILL".
+        is_skill_file = md_file.name == "SKILL.md"
+        identifier = md_file.parent.name if is_skill_file else md_file.stem
+
+        title = fm_name or identifier.replace("-", " ").title()
+        for line in body_lines:
             if line.startswith("# "):
                 title = line[2:].strip()
                 break
 
-        description = ""
-        for line in lines:
-            if line.strip() and not line.startswith("#"):
-                description = line.strip()
-                break
+        description = fm_description or ""
+        if not description:
+            for line in body_lines:
+                if line.strip() and not line.startswith("#"):
+                    description = line.strip()
+                    break
 
         return {
-            "id": f"{folder}/{md_file.stem}" if folder else md_file.stem,
+            "id": f"{folder}/{identifier}" if folder else identifier,
             "title": title,
             "filename": md_file.name,
             "folder": folder,
@@ -847,10 +877,23 @@ async def list_knowledge(include_system: bool = False):
     for folder_name in ["documents", "skills", "memory"]:
         folder_path = KNOWLEDGE_DIR / folder_name
         if folder_path.exists():
-            for md_file in sorted(folder_path.glob("*.md"), key=lambda f: f.name):
-                doc = _parse_md_file(md_file, folder=folder_name)
-                if doc:
-                    folders[folder_name].append(doc)
+            if folder_name == "skills":
+                # Skills follow the Agent Skills spec: each skill is a directory
+                # containing a SKILL.md file.
+                for skill_dir in sorted(
+                    [p for p in folder_path.iterdir() if p.is_dir()],
+                    key=lambda p: p.name,
+                ):
+                    skill_file = skill_dir / "SKILL.md"
+                    if skill_file.exists():
+                        doc = _parse_md_file(skill_file, folder=folder_name)
+                        if doc:
+                            folders[folder_name].append(doc)
+            else:
+                for md_file in sorted(folder_path.glob("*.md"), key=lambda f: f.name):
+                    doc = _parse_md_file(md_file, folder=folder_name)
+                    if doc:
+                        folders[folder_name].append(doc)
 
     return {
         "documents": documents,
@@ -861,7 +904,23 @@ async def list_knowledge(include_system: bool = False):
 
 @app.get("/knowledge/read/{filename:path}")
 async def read_knowledge(filename: str):
-    """Read a knowledge document."""
+    """Read a knowledge document.
+
+    Accepts bare skill identifiers like ``skills/analysis-scripts`` and
+    resolves them to ``skills/<n>/SKILL.md`` per the Agent Skills spec.
+    Stripping of YAML frontmatter from the returned content is the
+    caller's responsibility when rendering — the raw content is always
+    returned so the frontmatter remains discoverable.
+    """
+    # Resolve skills/<n> (with or without .md suffix) to skills/<n>/SKILL.md.
+    # We do this before appending .md so we don't double-append.
+    stripped = filename[:-3] if filename.endswith(".md") else filename
+    if stripped.startswith("skills/") and "/" in stripped:
+        skill_name = stripped[len("skills/") :]
+        candidate = KNOWLEDGE_DIR / "skills" / skill_name / "SKILL.md"
+        if candidate.exists():
+            filename = f"skills/{skill_name}/SKILL.md"
+
     if not filename.endswith(".md"):
         filename = f"{filename}.md"
 
@@ -879,14 +938,28 @@ async def read_knowledge(filename: str):
         return {"error": f"Document '{filename}' not found"}
 
     content = file_path.read_text(encoding="utf-8")
-    title = file_path.stem.replace("-", " ").title()
-    for line in content.split("\n"):
+
+    # Skills use SKILL.md as the filename — use the parent directory for
+    # identification and title fallback.
+    is_skill_file = file_path.name == "SKILL.md"
+    identifier = file_path.parent.name if is_skill_file else file_path.stem
+
+    title = identifier.replace("-", " ").title()
+    # Skip YAML frontmatter when scanning for the first H1 heading.
+    lines = content.split("\n")
+    body_start = 0
+    if lines and lines[0].strip() == "---":
+        for i in range(1, len(lines)):
+            if lines[i].strip() == "---":
+                body_start = i + 1
+                break
+    for line in lines[body_start:]:
         if line.startswith("# "):
             title = line[2:].strip()
             break
 
     return {
-        "id": file_path.stem,
+        "id": identifier,
         "title": title,
         "filename": file_path.name,
         "content": content,
