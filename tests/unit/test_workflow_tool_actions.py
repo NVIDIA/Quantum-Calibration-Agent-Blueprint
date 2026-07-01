@@ -74,6 +74,18 @@ class TestListAction:
         assert result["workflows"][0]["workflow_id"] == "bad_wf"
         assert result["workflows"][0]["error"] == "Invalid JSON"
 
+    def test_non_object_node_is_reported_without_crashing(self):
+        wf_dir = self.workflows_dir / "bad_node"
+        wf_dir.mkdir()
+        (wf_dir / "workflow.json").write_text(
+            json.dumps({"id": "bad_node", "name": "Bad", "nodes": ["node"]})
+        )
+
+        result = workflow.func(action="list")
+
+        assert result["workflows"][0]["workflow_id"] == "bad_node"
+        assert "must be an object" in result["workflows"][0]["error"]
+
 
 # ---------------------------------------------------------------------------
 # validate action
@@ -314,6 +326,14 @@ class TestStatusAction:
         result = workflow.func(action="status", workflow_id="nope")
         assert "error" in result
         assert "not found" in result["error"].lower()
+
+    def test_non_object_node_is_reported_without_crashing(self):
+        self._write_workflow({"id": "bad_node", "name": "Bad", "nodes": [42]})
+
+        result = workflow.func(action="status", workflow_id="bad_node")
+
+        assert result["error"] == "Invalid workflow data"
+        assert "must be an object" in result["details"]
 
     def test_running_workflow(self, sample_workflow):
         self._write_workflow(sample_workflow)

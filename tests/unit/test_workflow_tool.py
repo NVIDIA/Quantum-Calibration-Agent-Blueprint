@@ -206,6 +206,49 @@ class TestWorkflowUpdate:
 
         assert "error" in result
 
+    @pytest.mark.parametrize("bad_node", [42, "node", None, 3.14])
+    def test_non_object_node_is_rejected_before_persistence(
+        self, temp_workflows_dir, bad_node
+    ):
+        from tools.workflow_tool import workflow
+
+        result = workflow.func(
+            action="update",
+            workflow_id="malformed",
+            data={"name": "Malformed", "nodes": [bad_node]},
+        )
+
+        assert result["error"] == "Validation failed"
+        assert "must be an object" in result["details"][0]
+        assert not (temp_workflows_dir / "malformed").exists()
+
+    def test_non_object_node_does_not_modify_existing_workflow(
+        self, temp_workflows_dir
+    ):
+        from tools.workflow_tool import workflow
+
+        wf_dir = temp_workflows_dir / "existing"
+        wf_dir.mkdir()
+        wf_file = wf_dir / "workflow.json"
+        original = json.dumps(
+            {
+                "id": "existing",
+                "name": "Existing",
+                "nodes": [{"id": "n1", "name": "Node 1", "dependencies": []}],
+            },
+            indent=4,
+        )
+        wf_file.write_text(original)
+
+        result = workflow.func(
+            action="update",
+            workflow_id="existing",
+            data={"nodes": ["not-an-object"]},
+        )
+
+        assert result["error"] == "Validation failed"
+        assert wf_file.read_text() == original
+
     def test_missing_workflow_id(self):
         from tools.workflow_tool import workflow
 

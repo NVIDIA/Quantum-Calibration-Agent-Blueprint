@@ -44,6 +44,7 @@ from deepagents import create_deep_agent
 from deepagents.backends.local_shell import LocalShellBackend
 
 from core import storage, discovery
+from core.workflow_validation import get_workflow_nodes
 from prompt import load_system_prompt
 
 # Load environment
@@ -1178,7 +1179,19 @@ def _get_workflow_summary(workflow_id: str) -> dict | None:
     if not wf:
         return None
 
-    nodes = wf.get("nodes", [])
+    nodes, nodes_error = get_workflow_nodes(wf)
+    if nodes_error:
+        return {
+            "workflow_id": workflow_id,
+            "name": (
+                wf.get("name", workflow_id)
+                if isinstance(wf, dict)
+                else workflow_id
+            ),
+            "status": "invalid",
+            "error": nodes_error,
+            "process_running": _is_process_running(workflow_id),
+        }
     completed = sum(1 for n in nodes if n.get("state") == "success")
     failed = sum(1 for n in nodes if n.get("state") == "failed")
     running = sum(1 for n in nodes if n.get("state") == "running")
@@ -1227,7 +1240,9 @@ async def get_workflow(workflow_id: str):
     if not wf:
         return {"error": f"Workflow '{workflow_id}' not found"}
 
-    nodes = wf.get("nodes", [])
+    nodes, nodes_error = get_workflow_nodes(wf)
+    if nodes_error:
+        return {"error": "Invalid workflow data", "details": nodes_error}
     completed = sum(1 for n in nodes if n.get("state") == "success")
     failed = sum(1 for n in nodes if n.get("state") == "failed")
     skipped = sum(1 for n in nodes if n.get("state") == "skipped")

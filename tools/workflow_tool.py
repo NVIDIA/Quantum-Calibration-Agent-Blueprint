@@ -20,8 +20,11 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from langchain_core.tools import tool
+
+from core.workflow_validation import get_workflow_nodes
 
 ROOT_DIR = Path(__file__).parent.parent
 WORKFLOWS_DIR = ROOT_DIR / "data" / "workflows"
@@ -59,7 +62,14 @@ def _apply_changes(data: dict, changes: dict) -> dict:
                     target = target["nodes"]
                 elif isinstance(target, list):
                     # Find node by ID
-                    node = next((n for n in target if n.get("id") == part), None)
+                    node = next(
+                        (
+                            n
+                            for n in target
+                            if isinstance(n, dict) and n.get("id") == part
+                        ),
+                        None,
+                    )
                     if node is None:
                         # Node not found, skip this change
                         target = None
@@ -82,7 +92,9 @@ def _apply_changes(data: dict, changes: dict) -> dict:
     return result
 
 
-def _validate_workflow_comprehensive(workflow_id: str) -> dict:
+def _validate_workflow_comprehensive(
+    workflow_id: str, data: dict | None = None
+) -> dict:
     """Validate a workflow with comprehensive checks.
 
     Returns detailed validation results following the validate_script pattern.
@@ -99,56 +111,67 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
     wf_file = wf_dir / "workflow.json"
     plan_file = wf_dir / "plan.md"
 
-    # Check 1: Directory exists
-    if not wf_dir.exists():
+    if data is None:
+        # Check 1: Directory exists
+        if not wf_dir.exists():
+            result["checks"].append(
+                {
+                    "check": "directory_exists",
+                    "passed": False,
+                    "message": f"Workflow directory not found: {wf_dir}",
+                }
+            )
+            result["errors"].append(f"Workflow directory not found: {workflow_id}")
+            return result
         result["checks"].append(
             {
                 "check": "directory_exists",
-                "passed": False,
-                "message": f"Workflow directory not found: {wf_dir}",
+                "passed": True,
+                "message": "Workflow directory exists",
             }
         )
-        result["errors"].append(f"Workflow directory not found: {workflow_id}")
-        return result
-    result["checks"].append(
-        {
-            "check": "directory_exists",
-            "passed": True,
-            "message": "Workflow directory exists",
-        }
-    )
 
-    # Check 2: workflow.json exists
-    if not wf_file.exists():
+        # Check 2: workflow.json exists
+        if not wf_file.exists():
+            result["checks"].append(
+                {
+                    "check": "file_exists",
+                    "passed": False,
+                    "message": "workflow.json not found",
+                }
+            )
+            result["errors"].append(f"workflow.json not found in {wf_dir}")
+            return result
         result["checks"].append(
             {
                 "check": "file_exists",
-                "passed": False,
-                "message": "workflow.json not found",
+                "passed": True,
+                "message": "workflow.json exists",
             }
         )
-        result["errors"].append(f"workflow.json not found in {wf_dir}")
-        return result
-    result["checks"].append(
-        {"check": "file_exists", "passed": True, "message": "workflow.json exists"}
-    )
 
-    # Check 3: Valid JSON syntax
-    try:
-        data = json.loads(wf_file.read_text())
-    except json.JSONDecodeError as e:
+        # Check 3: Valid JSON syntax
+        try:
+            data = json.loads(wf_file.read_text())
+        except json.JSONDecodeError as e:
+            result["checks"].append(
+                {
+                    "check": "json_syntax",
+                    "passed": False,
+                    "message": f"Invalid JSON at line {e.lineno}: {e.msg}",
+                }
+            )
+            result["errors"].append(f"Invalid JSON syntax: {e}")
+            return result
         result["checks"].append(
-            {
-                "check": "json_syntax",
-                "passed": False,
-                "message": f"Invalid JSON at line {e.lineno}: {e.msg}",
-            }
+            {"check": "json_syntax", "passed": True, "message": "Valid JSON syntax"}
         )
-        result["errors"].append(f"Invalid JSON syntax: {e}")
+
+    if not isinstance(data, dict):
+        result["errors"].append(
+            f"Workflow must be an object, got {type(data).__name__}"
+        )
         return result
-    result["checks"].append(
-        {"check": "json_syntax", "passed": True, "message": "Valid JSON syntax"}
-    )
 
     # Check 4: Required fields (id, name, nodes)
     required_fields = ["id", "name", "nodes"]
@@ -203,6 +226,25 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
         }
     )
 
+    # Every node must be an object before later checks use mapping operations.
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            message = (
+                f"nodes[{index}] must be an object, got {type(node).__name__}"
+            )
+            result["checks"].append(
+                {"check": "nodes_are_objects", "passed": False, "message": message}
+            )
+            result["errors"].append(message)
+            return result
+    result["checks"].append(
+        {
+            "check": "nodes_are_objects",
+            "passed": True,
+            "message": "All nodes are objects",
+        }
+    )
+
     # Check 7: Node IDs are unique
     node_ids = []
     duplicate_ids = []
@@ -218,6 +260,9 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
             result["errors"].append(
                 f"Node missing 'id' field: {node.get('name', 'unknown')}"
             )
+            return result
+        if not isinstance(node["id"], str) or not node["id"]:
+            result["errors"].append("Node 'id' must be a non-empty string")
             return result
         if node["id"] in node_ids:
             duplicate_ids.append(node["id"])
@@ -252,6 +297,11 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
                 }
             )
             result["errors"].append(f"Node '{node['id']}' missing 'name' field")
+            return result
+        if not isinstance(node["name"], str) or not node["name"]:
+            result["errors"].append(
+                f"Node '{node['id']}' name must be a non-empty string"
+            )
             return result
     result["checks"].append(
         {
@@ -453,6 +503,10 @@ def _validate_dag(nodes: list) -> tuple[bool, str]:
     if not nodes:
         return False, "Workflow has no nodes"
 
+    nodes, nodes_error = get_workflow_nodes({"nodes": nodes})
+    if nodes_error:
+        return False, nodes_error
+
     # Check all nodes have required fields
     node_ids = set()
     for node in nodes:
@@ -534,7 +588,9 @@ def _load_history(workflow_id: str, last_n: int = 20) -> list[dict]:
 
 def _format_status(data: dict, history: list[dict]) -> dict:
     """Format workflow status for display."""
-    nodes = data.get("nodes", [])
+    nodes, nodes_error = get_workflow_nodes(data)
+    if nodes_error:
+        return {"error": "Invalid workflow data", "details": nodes_error}
     total = len(nodes)
     completed = sum(1 for n in nodes if n.get("state") == "success")
     failed = sum(1 for n in nodes if n.get("state") == "failed")
@@ -639,7 +695,15 @@ def workflow(
                     if wf_file.exists():
                         try:
                             data = json.loads(wf_file.read_text())
-                            nodes = data.get("nodes", [])
+                            nodes, nodes_error = get_workflow_nodes(data)
+                            if nodes_error:
+                                workflows.append(
+                                    {
+                                        "workflow_id": wf_dir.name,
+                                        "error": nodes_error,
+                                    }
+                                )
+                                continue
                             completed = sum(
                                 1 for n in nodes if n.get("state") == "success"
                             )
@@ -729,29 +793,25 @@ def workflow(
         # Apply changes
         merged = _apply_changes(existing, data)
 
-        # Ensure directory exists
-        wf_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write tentatively
-        wf_file.write_text(json.dumps(merged, indent=2))
-
-        # Validate
-        validation = _validate_workflow_comprehensive(workflow_id)
+        # Validate the merged data before creating directories or writing files.
+        validation = _validate_workflow_comprehensive(workflow_id, data=merged)
 
         if not validation["valid"]:
-            # Rollback: restore original or delete if new
-            if is_new:
-                wf_file.unlink(missing_ok=True)
-                if wf_dir.exists() and not any(wf_dir.iterdir()):
-                    wf_dir.rmdir()
-            else:
-                wf_file.write_text(json.dumps(existing, indent=2))
-
             return {
                 "error": "Validation failed",
                 "details": validation["errors"],
                 "warnings": validation["warnings"],
             }
+
+        # Persist only validated data. Replacing a same-directory temporary file
+        # avoids exposing partially written JSON to concurrent readers.
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        temp_file = wf_file.with_name(f".{wf_file.name}.{uuid4().hex}.tmp")
+        try:
+            temp_file.write_text(json.dumps(merged, indent=2))
+            temp_file.replace(wf_file)
+        finally:
+            temp_file.unlink(missing_ok=True)
 
         return {
             "success": True,
