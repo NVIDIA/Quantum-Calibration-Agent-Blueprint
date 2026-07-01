@@ -16,6 +16,7 @@
 """Experiment discovery via AST parsing."""
 
 import ast
+import json
 from pathlib import Path
 from typing import Optional
 
@@ -155,15 +156,17 @@ def _parse_function_parameters(func_def: ast.FunctionDef) -> list[ParameterSpec]
         # Determine if required based on default value
         has_default = i >= default_offset
         default_value = None
+        default_resolved = True
         if has_default:
             default_node = func_def.args.defaults[i - default_offset]
-            default_value = _eval_literal(default_node)
+            default_resolved, default_value = _eval_default(default_node)
 
         parameters.append(
             ParameterSpec(
                 name=param_name,
                 type=type_info["type"],
                 default=default_value,
+                default_resolved=default_resolved,
                 range=type_info["range"],
                 required=not has_default,
             )
@@ -175,13 +178,17 @@ def _parse_function_parameters(func_def: ast.FunctionDef) -> list[ParameterSpec]
             continue
 
         type_info = _parse_annotation(kwarg.annotation)
-        default_value = None if kw_default is None else _eval_literal(kw_default)
+        if kw_default is None:
+            default_resolved, default_value = True, None
+        else:
+            default_resolved, default_value = _eval_default(kw_default)
 
         parameters.append(
             ParameterSpec(
                 name=kwarg.arg,
                 type=type_info["type"],
                 default=default_value,
+                default_resolved=default_resolved,
                 range=type_info["range"],
                 required=kw_default is None,
             )
@@ -218,6 +225,7 @@ def _parse_annotation(annotation: ast.expr) -> dict:
             "str": "str",
             "bool": "bool",
             "list": "list",
+            "dict": "dict",
         }
         result["type"] = type_map.get(annotation.id, "str")
 
@@ -255,6 +263,7 @@ def _parse_annotated(subscript: ast.Subscript) -> dict:
             "int": "int",
             "str": "str",
             "bool": "bool",
+            "dict": "dict",
         }
         result["type"] = type_map.get(type_node.id, "str")
 
@@ -289,6 +298,20 @@ def _get_type_name(node: ast.expr) -> Optional[str]:
     elif isinstance(node, ast.Subscript):
         return _get_type_name(node.value)
     return None
+
+
+def _eval_default(node: ast.expr) -> tuple[bool, any]:
+    """Evaluate JSON-compatible defaults and distinguish unresolved values."""
+    try:
+        value = ast.literal_eval(node)
+        # Defaults cross the subprocess boundary as JSON. Only resolve values
+        # whose type and value survive that round trip unchanged.
+        round_tripped = json.loads(json.dumps(value))
+        if type(round_tripped) is not type(value) or round_tripped != value:
+            return False, None
+        return True, value
+    except (ValueError, TypeError, json.JSONDecodeError):
+        return False, None
 
 
 def _eval_literal(node: ast.expr) -> Optional[any]:

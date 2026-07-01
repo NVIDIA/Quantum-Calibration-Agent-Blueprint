@@ -25,8 +25,9 @@ class ParameterSpec:
 
     Attributes:
         name: Parameter name
-        type: Parameter type (int, float, str, bool, list)
+        type: Parameter type (int, float, str, bool, list, dict)
         default: Default value (None if required)
+        default_resolved: Whether discovery could safely evaluate the default
         range: Tuple of (min, max) for numeric types
         required: Whether parameter is required
     """
@@ -34,6 +35,7 @@ class ParameterSpec:
     name: str
     type: str
     default: Optional[Any] = None
+    default_resolved: bool = True
     range: Optional[tuple[float, float]] = None
     required: bool = True
 

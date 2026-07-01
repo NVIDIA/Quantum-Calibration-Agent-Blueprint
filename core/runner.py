@@ -17,11 +17,22 @@
 
 import json
 import subprocess
+from copy import deepcopy
 from pathlib import Path
-from typing import Optional
 
 from .discovery import get_experiment_schema
 from .models import ExperimentSchema, ParameterSpec
+
+
+def resolve_params(params: dict, schema: ExperimentSchema) -> dict:
+    """Merge parameter overrides with defaults discovery safely resolved."""
+    effective_params = {
+        param.name: deepcopy(param.default)
+        for param in schema.parameters
+        if not param.required and param.default_resolved
+    }
+    effective_params.update(params)
+    return effective_params
 
 
 def validate_params(params: dict, schema: ExperimentSchema) -> list[str]:
@@ -52,6 +63,14 @@ def validate_params(params: dict, schema: ExperimentSchema) -> list[str]:
             continue
 
         spec = param_specs[param_name]
+
+        if (
+            param_value is None
+            and not spec.required
+            and spec.default_resolved
+            and spec.default is None
+        ):
+            continue
 
         # Check type (strict, no coercion)
         if not _check_type(param_value, spec.type):
@@ -104,7 +123,10 @@ def run_experiment(
     if schema is None:
         raise ValueError(f"Experiment not found: {name}")
 
-    # Validate parameters
+    # Resolve only defaults that discovery can safely carry over JSON. Dynamic
+    # defaults remain omitted so Python applies their real declared values.
+    params = resolve_params(params, schema)
+
     validation_errors = validate_params(params, schema)
     if validation_errors:
         raise ValueError(f"Parameter validation failed: {'; '.join(validation_errors)}")
@@ -287,6 +309,7 @@ def _check_type(value: any, type_name: str) -> bool:
         "str": str,
         "bool": bool,
         "list": list,
+        "dict": dict,
     }
 
     expected_type = type_map.get(type_name)

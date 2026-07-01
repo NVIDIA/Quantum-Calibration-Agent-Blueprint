@@ -970,7 +970,9 @@ def experiments_schema(
 @experiments_app.command("run")
 def experiments_run(
     name: str = typer.Argument(..., help="Experiment name"),
-    params: str = typer.Option(..., "--params", "-p", help="Parameters as JSON string"),
+    params: str = typer.Option(
+        "{}", "--params", "-p", help="Parameter overrides as a JSON string"
+    ),
     timeout: int = typer.Option(300, "--timeout", help="Timeout in seconds"),
     notes: str = typer.Option("", "--notes", help="User notes"),
     human: bool = typer.Option(False, "--human", "-h", help="Human-readable output"),
@@ -995,7 +997,12 @@ def experiments_run(
             console.print("[red]Params must be a JSON object[/red]")
             raise typer.Exit(1)
 
-        # Run experiment
+        # Persist defaults that discovery can safely resolve. Dynamic defaults
+        # remain omitted so Python applies their real declared values.
+        schema = discovery.get_experiment_schema(name, scripts_dir)
+        if schema is not None:
+            params_dict = runner.resolve_params(params_dict, schema)
+
         result_dict = runner.run_experiment(name, params_dict, scripts_dir, timeout)
 
         # Generate experiment ID
