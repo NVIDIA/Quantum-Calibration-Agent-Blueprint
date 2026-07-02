@@ -383,3 +383,54 @@ class TestErrorHandling:
                 result = lab.invoke({"action": "history_list"})
                 assert "error" in result
                 assert "Test error" in result["error"]
+
+
+class TestArrayPersistenceE2E:
+    """End-to-end: a real run must make arrays queryable (regression for DEF-002)."""
+
+    def test_run_then_list_and_get_arrays(self, temp_scripts_dir, temp_data_dir):
+        """After running an experiment, list_arrays/get_array return its arrays."""
+        (temp_scripts_dir / "array_experiment.py").write_text(
+            '''
+from typing import Annotated
+
+def array_experiment(
+    param1: Annotated[float, (0.0, 10.0)] = 5.0,
+) -> dict:
+    """Experiment returning tagged arrays."""
+    return {
+        "status": "success",
+        "data": {
+            "delays": {"type": "array", "value": [0.0, 1.0, 2.0, 3.0, 4.0]},
+            "population": {"type": "array", "value": [0.9, 0.7, 0.5, 0.3, 0.2]},
+            "t1_time": {"type": "scalar", "value": 42.0},
+        },
+    }
+'''
+        )
+        with patch("tools.lab_tool.SCRIPTS_DIR", temp_scripts_dir), patch(
+            "tools.lab_tool.DATA_DIR", temp_data_dir
+        ):
+            run_result = run_experiment.invoke(
+                {"experiment_name": "array_experiment", "params": {"param1": 5.0}}
+            )
+            assert run_result["status"] == "success"
+            exp_id = run_result["id"]
+            # The run summary advertises the array names...
+            assert set(run_result["arrays"]) == {"delays", "population"}
+
+            # ...and they are actually queryable from storage.
+            listed = lab.invoke({"action": "list_arrays", "experiment_id": exp_id})
+            names = {a["name"] for a in listed["arrays"]}
+            assert names == {"delays", "population"}
+
+            got = lab.invoke(
+                {
+                    "action": "get_array",
+                    "experiment_id": exp_id,
+                    "array_name": "delays",
+                    "slice_start": 0,
+                    "slice_end": 3,
+                }
+            )
+            assert got["data"] == [0.0, 1.0, 2.0]

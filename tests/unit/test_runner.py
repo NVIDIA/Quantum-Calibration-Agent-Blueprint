@@ -377,3 +377,81 @@ def failed_with_error_experiment(
         assert len(errors) == 2
         assert any("param1" in e for e in errors)
         assert any("param2" in e for e in errors)
+
+
+class TestArrayExtraction:
+    """Tests that tagged arrays are promoted to a top-level `arrays` key."""
+
+    def test_arrays_extracted_from_data(self, temp_scripts_dir):
+        """Arrays tagged in `data` are promoted; scalars are excluded."""
+        script = temp_scripts_dir / "array_experiment.py"
+        script.write_text(
+            '''
+from typing import Annotated
+
+def array_experiment(
+    param1: Annotated[float, (0.0, 10.0)] = 5.0,
+) -> dict:
+    """Experiment returning tagged arrays and a scalar."""
+    return {
+        "status": "success",
+        "data": {
+            "delays": {"type": "array", "value": [0.0, 1.0, 2.0], "unit": "us"},
+            "population": {"type": "array", "value": [0.9, 0.5, 0.2]},
+            "t1_time": {"type": "scalar", "value": 42.0, "unit": "us"},
+        },
+    }
+'''
+        )
+        result = run_experiment("array_experiment", {"param1": 5.0}, temp_scripts_dir)
+        assert result["arrays"] == {
+            "delays": [0.0, 1.0, 2.0],
+            "population": [0.9, 0.5, 0.2],
+        }
+        # Scalars must not leak into arrays.
+        assert "t1_time" not in result["arrays"]
+
+    def test_existing_arrays_not_clobbered(self, temp_scripts_dir):
+        """A script providing its own top-level `arrays` is left untouched."""
+        script = temp_scripts_dir / "prebuilt_arrays_experiment.py"
+        script.write_text(
+            '''
+from typing import Annotated
+
+def prebuilt_arrays_experiment(
+    param1: Annotated[float, (0.0, 10.0)] = 5.0,
+) -> dict:
+    """Experiment that already supplies a top-level arrays key."""
+    return {
+        "status": "success",
+        "arrays": {"freq": [1.0, 2.0]},
+        "data": {"mag": {"type": "array", "value": [9.0]}},
+    }
+'''
+        )
+        result = run_experiment(
+            "prebuilt_arrays_experiment", {"param1": 5.0}, temp_scripts_dir
+        )
+        assert result["arrays"] == {"freq": [1.0, 2.0]}
+
+    def test_no_arrays_yields_empty_dict(self, temp_scripts_dir):
+        """A result with only scalars yields an empty arrays dict, not a crash."""
+        script = temp_scripts_dir / "scalar_only_experiment.py"
+        script.write_text(
+            '''
+from typing import Annotated
+
+def scalar_only_experiment(
+    param1: Annotated[float, (0.0, 10.0)] = 5.0,
+) -> dict:
+    """Experiment returning only scalar data."""
+    return {
+        "status": "success",
+        "data": {"t1_time": {"type": "scalar", "value": 42.0}},
+    }
+'''
+        )
+        result = run_experiment(
+            "scalar_only_experiment", {"param1": 5.0}, temp_scripts_dir
+        )
+        assert result["arrays"] == {}

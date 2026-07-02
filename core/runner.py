@@ -268,6 +268,21 @@ def _parse_and_validate_result(stdout: str) -> dict:
     if result["status"] == "failed" and "error" not in result:
         raise RuntimeError("Failed experiment must include 'error' field")
 
+    # Promote tagged arrays to a top-level `arrays` key so downstream consumers
+    # (lab tool, CLI) persist them into the queryable HDF5 `arrays` group.
+    # Scripts return arrays nested under `data`/`results` tagged `type:"array"`;
+    # nothing else extracts them, so the array-access surface would stay empty.
+    if not result.get("arrays"):
+        data = result.get("results") or result.get("data") or {}
+        if isinstance(data, dict):
+            result["arrays"] = {
+                key: value["value"]
+                for key, value in data.items()
+                if isinstance(value, dict)
+                and value.get("type") == "array"
+                and "value" in value
+            }
+
     return result
 
 
