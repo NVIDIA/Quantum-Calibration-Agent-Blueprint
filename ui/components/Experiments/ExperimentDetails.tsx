@@ -114,14 +114,14 @@ export const ExperimentDetails: React.FC<ExperimentDetailsProps> = ({
     }
 
     return (
-      <div className="space-y-2">
+      <div className="inline-grid grid-cols-[max-content_max-content] gap-x-4 gap-y-2">
         {Object.entries(experiment.params).map(([key, value]) => (
-          <div key={key} className="flex justify-between py-1 border-b border-gray-100 dark:border-gray-700">
+          <React.Fragment key={key}>
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{key}:</span>
             <span className="text-sm text-gray-600 dark:text-gray-400">
               {typeof value === 'object' ? JSON.stringify(value) : String(value)}
             </span>
-          </div>
+          </React.Fragment>
         ))}
       </div>
     );
