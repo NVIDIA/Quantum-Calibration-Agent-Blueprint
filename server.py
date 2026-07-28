@@ -1206,6 +1206,14 @@ def _get_workflow_summary(workflow_id: str) -> dict | None:
             ),
             "status": "invalid",
             "error": nodes_error,
+            # The list view's contract declares these, so they are reported as
+            # empty rather than omitted. Dropping them left the row rendering
+            # a blank progress section instead of saying the data is invalid.
+            "progress": "0/0",
+            "completed": 0,
+            "failed": 0,
+            "running": 0,
+            "total": 0,
             "process_running": _is_process_running(workflow_id),
         }
     completed = sum(1 for n in nodes if n.get("state") == "success")

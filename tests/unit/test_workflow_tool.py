@@ -30,23 +30,23 @@ class TestApplyChanges:
 
     def test_simple_key(self):
         data = {"status": "created"}
-        result = _apply_changes(data, {"status": "running"})
+        result, _ = _apply_changes(data, {"status": "running"})
         assert result["status"] == "running"
 
     def test_add_new_key(self):
         data = {"id": "test"}
-        result = _apply_changes(data, {"name": "Test Workflow"})
+        result, _ = _apply_changes(data, {"name": "Test Workflow"})
         assert result["name"] == "Test Workflow"
         assert result["id"] == "test"
 
     def test_nested_dot_notation(self):
         data = {"context": {}}
-        result = _apply_changes(data, {"context.resonator_freq": 5.823})
+        result, _ = _apply_changes(data, {"context.resonator_freq": 5.823})
         assert result["context"]["resonator_freq"] == 5.823
 
     def test_nested_creates_intermediate(self):
         data = {"id": "test"}
-        result = _apply_changes(data, {"context.value": 123})
+        result, _ = _apply_changes(data, {"context.value": 123})
         assert result["context"]["value"] == 123
 
     def test_node_dot_notation(self):
@@ -56,7 +56,7 @@ class TestApplyChanges:
                 {"id": "node_2", "state": "pending"}
             ]
         }
-        result = _apply_changes(data, {"nodes.node_1.state": "running"})
+        result, _ = _apply_changes(data, {"nodes.node_1.state": "running"})
         assert result["nodes"][0]["state"] == "running"
         assert result["nodes"][1]["state"] == "pending"
 
@@ -64,7 +64,7 @@ class TestApplyChanges:
         data = {
             "nodes": [{"id": "node_1", "state": "running"}]
         }
-        result = _apply_changes(data, {
+        result, _ = _apply_changes(data, {
             "nodes.node_1.state": "success",
             "nodes.node_1.extracted": {"frequency": 5.0}
         })
@@ -73,7 +73,7 @@ class TestApplyChanges:
 
     def test_multiple_changes(self):
         data = {"status": "created", "context": {}}
-        result = _apply_changes(data, {
+        result, _ = _apply_changes(data, {
             "status": "running",
             "started_at": "2024-01-01T00:00:00Z",
             "context.value": 123
@@ -86,13 +86,13 @@ class TestApplyChanges:
         data = {
             "nodes": [{"id": "node_1", "state": "pending"}]
         }
-        result = _apply_changes(data, {"nodes.node_999.state": "running"})
+        result, _ = _apply_changes(data, {"nodes.node_999.state": "running"})
         # Should not crash, original data unchanged
         assert result["nodes"][0]["state"] == "pending"
 
     def test_original_not_modified(self):
         data = {"status": "created"}
-        result = _apply_changes(data, {"status": "running"})
+        result, _ = _apply_changes(data, {"status": "running"})
         assert data["status"] == "created"
         assert result["status"] == "running"
 
@@ -503,20 +503,103 @@ class TestApplyChangesMalformedPaths:
     """
 
     def test_dot_path_through_non_mapping_does_not_raise(self):
-        result = _apply_changes(
+        result, _ = _apply_changes(
             {"id": "crash"}, {"foo": [], "foo.nodes.state": "running"}
         )
         assert result["foo"] == []
 
     def test_dot_path_through_scalar_does_not_raise(self):
-        result = _apply_changes(
+        result, _ = _apply_changes(
             {"id": "crash"}, {"foo": 3, "foo.nodes.state": "running"}
         )
         assert result["foo"] == 3
 
     def test_nodes_path_through_non_mapping_does_not_raise(self):
-        result = _apply_changes(
+        result, _ = _apply_changes(
             {"id": "crash", "nodes": "not a list"},
             {"nodes.n1.state": "running"},
         )
         assert result["nodes"] == "not a list"
+
+
+class TestApplyChangesReportsUnapplied:
+    """A change whose path cannot be traversed must be reported, not dropped.
+
+    Skipping it silently and returning success told the caller its update had
+    landed when the persisted workflow was unchanged.
+    """
+
+    def test_path_through_non_mapping_is_reported(self):
+        result, unapplied = _apply_changes(
+            {"id": "w", "foo": 3}, {"foo.nodes.state": "running"}
+        )
+        assert unapplied == ["foo.nodes.state"]
+        assert result["foo"] == 3
+
+    def test_unknown_node_id_is_reported(self):
+        data = {"id": "w", "nodes": [{"id": "n1", "state": "pending"}]}
+        result, unapplied = _apply_changes(data, {"nodes.n999.state": "running"})
+        assert unapplied == ["nodes.n999.state"]
+        assert result["nodes"][0]["state"] == "pending"
+
+    def test_applicable_changes_report_nothing(self):
+        data = {"id": "w", "nodes": [{"id": "n1", "state": "pending"}]}
+        result, unapplied = _apply_changes(
+            data, {"status": "running", "nodes.n1.state": "success"}
+        )
+        assert unapplied == []
+        assert result["status"] == "running"
+        assert result["nodes"][0]["state"] == "success"
+
+
+class TestUpdateRejectsUnapplicableChanges:
+    """The update action must not report success for a change it dropped."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_dir(self, tmp_path, monkeypatch):
+        self.workflows_dir = tmp_path / "workflows"
+        self.workflows_dir.mkdir()
+        monkeypatch.setattr("tools.workflow_tool.WORKFLOWS_DIR", self.workflows_dir)
+
+    def _write(self, data):
+        d = self.workflows_dir / data["id"]
+        d.mkdir(parents=True, exist_ok=True)
+        (d / "workflow.json").write_text(json.dumps(data))
+        return d / "workflow.json"
+
+    def test_untraversable_path_is_rejected(self):
+        from tools.workflow_tool import workflow
+
+        wf_file = self._write(
+            {
+                "id": "w",
+                "name": "W",
+                "foo": 3,
+                "nodes": [{"id": "n1", "name": "N", "dependencies": []}],
+            }
+        )
+        before = wf_file.read_text()
+
+        result = workflow.func(
+            action="update", workflow_id="w", data={"foo.nodes.state": "running"}
+        )
+
+        assert result.get("success") is not True
+        assert "error" in result
+        assert any("foo.nodes.state" in d for d in result["details"])
+        assert wf_file.read_text() == before
+
+    def test_applicable_update_still_succeeds(self):
+        from tools.workflow_tool import workflow
+
+        self._write(
+            {
+                "id": "w",
+                "name": "W",
+                "nodes": [{"id": "n1", "name": "N", "dependencies": []}],
+            }
+        )
+        result = workflow.func(
+            action="update", workflow_id="w", data={"status": "running"}
+        )
+        assert result["success"] is True

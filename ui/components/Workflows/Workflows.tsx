@@ -81,6 +81,8 @@ interface WorkflowSummary {
   total: number;
   current_node?: string;
   process_running?: boolean;
+  /** Present when the persisted workflow could not be read or is malformed. */
+  error?: string;
 }
 
 interface WorkflowDetail {
@@ -758,15 +760,23 @@ export const Workflows = () => {
                       );
                     })()}
                   </div>
-                  <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    Progress: {wf.progress}
-                    {wf.current_node && (
-                      <span className="ml-2">
-                        <IconChevronRight className="w-3 h-3 inline" />
-                        {wf.current_node}
-                      </span>
-                    )}
-                  </div>
+                  {wf.error ? (
+                    /* A malformed workflow has no progress to show, so it
+                       explains itself instead of rendering an empty bar. */
+                    <div className="mt-1 text-xs text-red-600 dark:text-red-400 break-words">
+                      Invalid workflow data: {wf.error}
+                    </div>
+                  ) : (
+                    <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Progress: {wf.progress}
+                      {wf.current_node && (
+                        <span className="ml-2">
+                          <IconChevronRight className="w-3 h-3 inline" />
+                          {wf.current_node}
+                        </span>
+                      )}
+                    </div>
+                  )}
                   {/* Progress bar */}
                   <div className="mt-2 h-1.5 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden flex">
                     <div

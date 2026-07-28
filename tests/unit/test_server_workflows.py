@@ -163,3 +163,24 @@ async def test_malformed_workflows_are_listed_with_their_error(sentinel_workflow
     assert "error" in by_id["null_wf"]
     assert "error" in by_id["corrupt_wf"]
     assert "error" not in by_id["good_wf"]
+
+
+@pytest.mark.asyncio
+async def test_invalid_summary_satisfies_the_list_contract(sentinel_workflows):
+    """The malformed entry must carry the fields the list view declares.
+
+    Omitting them left the row rendering a blank progress section instead of
+    reporting that the data is invalid.
+    """
+    result = await server.list_workflows()
+    by_id = {w["workflow_id"]: w for w in result["workflows"]}
+
+    invalid = by_id["null_wf"]
+    for field in ("progress", "completed", "failed", "running", "total", "status"):
+        assert field in invalid, field
+    assert invalid["status"] == "invalid"
+    assert invalid["total"] == 0
+    assert invalid["error"]
+
+    # A healthy workflow is unaffected.
+    assert "error" not in by_id["good_wf"]

@@ -38,7 +38,7 @@ VALID_WORKFLOW_STATUSES = {"created", "running", "paused", "completed", "failed"
 VALID_NODE_STATES = {"pending", "running", "success", "failed", "skipped"}
 
 
-def _apply_changes(data: dict, changes: dict) -> dict:
+def _apply_changes(data: dict, changes: dict) -> tuple[dict, list[str]]:
     """Apply changes to data, supporting dot notation for nested paths.
 
     Supports:
@@ -47,8 +47,15 @@ def _apply_changes(data: dict, changes: dict) -> dict:
     - Node updates: {"nodes.node_1.state": "success"}
 
     For nodes, uses node ID to find the correct node in the array.
+
+    Returns (result, unapplied), where `unapplied` lists the change keys whose
+    path could not be traversed — an unknown node ID, or a path running
+    through a value that is not a mapping. The caller has to decide what to do
+    about those: silently dropping them and reporting success would tell the
+    caller its update landed when it did not.
     """
     result = copy.deepcopy(data)
+    unapplied = []
 
     for key, value in changes.items():
         if "." not in key:
@@ -95,12 +102,12 @@ def _apply_changes(data: dict, changes: dict) -> dict:
                     break
 
             # Set the final value
-            if target is not None:
-                final_key = parts[-1]
-                if isinstance(target, dict):
-                    target[final_key] = value
+            if isinstance(target, dict):
+                target[parts[-1]] = value
+            else:
+                unapplied.append(key)
 
-    return result
+    return result, unapplied
 
 
 def _validate_workflow_comprehensive(
@@ -829,7 +836,14 @@ def workflow(
             }
 
         # Apply changes
-        merged = _apply_changes(existing, data)
+        merged, unapplied = _apply_changes(existing, data)
+        if unapplied:
+            return {
+                "error": "Update could not be applied",
+                "details": [
+                    f"No traversable path for '{key}'" for key in unapplied
+                ],
+            }
 
         # Validate the merged data before creating directories or writing files.
         validation = _validate_workflow_comprehensive(workflow_id, data=merged)
