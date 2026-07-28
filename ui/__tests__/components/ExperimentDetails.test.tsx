@@ -113,8 +113,13 @@ describe('ExperimentDetails parameter layout', () => {
 
     // An uncapped max-content label track is maximized before the fr track is
     // expanded, so a long enough name takes the whole width and leaves the
-    // value nothing. The cap keeps a share of the container for the value.
-    expect(grid.className).toContain('min(max-content,45%)');
+    // value nothing. fit-content() caps it while keeping short labels sized
+    // to their content. Measured in Chromium at a 320px container: a long
+    // name overflowed by 8px with minmax(0,max-content) and by 0px with
+    // fit-content(45%). min(max-content,45%) is not valid inside a track
+    // definition -- Chromium drops the whole declaration.
+    expect(grid.className).toContain('fit-content(45%)');
+    expect(grid.className).not.toContain('min(max-content');
   });
 
   it.each([
