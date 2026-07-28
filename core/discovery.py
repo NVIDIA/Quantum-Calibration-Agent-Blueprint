@@ -306,7 +306,13 @@ def _eval_default(node: ast.expr) -> tuple[bool, any]:
         value = ast.literal_eval(node)
         # Defaults cross the subprocess boundary as JSON. Only resolve values
         # whose type and value survive that round trip unchanged.
-        round_tripped = json.loads(json.dumps(value))
+        #
+        # allow_nan=False rejects infinity and NaN, which json.dumps otherwise
+        # emits as the bare tokens Infinity/NaN that standard JSON readers and
+        # non-Python consumers reject. The round trip is still needed alongside
+        # it: a tuple decodes back as a list and an int dict key as a string,
+        # and strict encoding accepts both.
+        round_tripped = json.loads(json.dumps(value, allow_nan=False))
         if type(round_tripped) is not type(value) or round_tripped != value:
             return False, None
         return True, value
