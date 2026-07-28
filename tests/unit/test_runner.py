@@ -476,3 +476,85 @@ class TestRangeChecksRejectNonFinite:
     def test_open_and_closed_bounds(self, rng, value, expected_ok):
         errors = validate_params({"x": value}, self._schema(rng))
         assert (errors == []) is expected_ok
+
+
+class TestDefaultsAreOnlyInjectedWhenAcceptable:
+    """A resolved default must not be injected if validation would reject it.
+
+    Discovery records an annotation name verbatim when it is not in its type
+    map, so `Dict[str, int]` becomes "Dict" and `_check_type` does not know it.
+    Injecting the default then fails validation and aborts a run that worked
+    before, when the parameter was simply omitted and Python applied the
+    default itself.
+    """
+
+    @pytest.fixture
+    def generic_annotation_scripts(self, tmp_path):
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "__init__.py").write_text("")
+        (scripts_dir / "generics.py").write_text(
+            '''
+from typing import Annotated, Dict, List
+
+def generics(
+    options: Dict[str, int] = {"a": 1},
+    tags: List[str] = ["x"],
+    scale: Annotated[float, (0.0, 10.0)] = 1.0,
+    plain: float = 2.0,
+) -> dict:
+    """Experiment using annotations discovery cannot map."""
+    return {"status": "success", "data": {}}
+'''
+        )
+        return scripts_dir
+
+    def test_unmappable_annotations_are_not_injected(
+        self, generic_annotation_scripts
+    ):
+        """Only defaults whose type can actually be checked are injected."""
+        schema = get_experiment_schema("generics", generic_annotation_scripts)
+        assert schema is not None
+
+        effective = resolve_params({}, schema)
+
+        assert effective == {"scale": 1.0, "plain": 2.0}
+
+    def test_resulting_params_validate(self, generic_annotation_scripts):
+        """The whole point: what is injected must pass validation."""
+        schema = get_experiment_schema("generics", generic_annotation_scripts)
+        assert schema is not None
+
+        assert validate_params(resolve_params({}, schema), schema) == []
+
+    def test_explicit_override_still_wins(self, generic_annotation_scripts):
+        """Not injecting a default must not block passing one explicitly."""
+        schema = get_experiment_schema("generics", generic_annotation_scripts)
+        assert schema is not None
+
+        effective = resolve_params({"options": {"b": 2}}, schema)
+        assert effective["options"] == {"b": 2}
+
+    def test_out_of_range_default_is_not_injected(self, tmp_path):
+        """A default outside its own declared range is the same failure mode."""
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "__init__.py").write_text("")
+        (scripts_dir / "oor.py").write_text(
+            '''
+from typing import Annotated
+
+def oor(
+    amplitude: Annotated[float, (0.0, 1.0)] = 5.0,
+    good: Annotated[float, (0.0, 10.0)] = 1.0,
+) -> dict:
+    """Experiment whose default falls outside its own range."""
+    return {"status": "success", "data": {}}
+'''
+        )
+        schema = get_experiment_schema("oor", scripts_dir)
+        assert schema is not None
+
+        effective = resolve_params({}, schema)
+        assert effective == {"good": 1.0}
+        assert validate_params(effective, schema) == []
