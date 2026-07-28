@@ -600,3 +600,108 @@ class TestPromotedArraysArePersistable:
         loaded = storage.load_experiment(result.id, tmp_path)
         assert loaded is not None
         assert loaded.arrays == promoted["arrays"]
+
+
+class TestOnlyPersistableArraysArePromoted:
+    """A list is not enough: storage must be able to write and read it back.
+
+    core/storage.py calls np.array() on write and slices with [:] on read, so
+    a ragged list raises from numpy and string, object or None-bearing lists
+    raise from h5py. Promoting them would turn a good run into a save failure.
+    """
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [[1, 2], [3]],
+            ["a", "b"],
+            [{"a": 1}],
+            [1, "a"],
+            [None, 1],
+        ],
+        ids=["ragged", "strings", "dicts", "mixed", "with_none"],
+    )
+    def test_unwritable_lists_are_not_promoted(self, value):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"candidate": {"type": "array", "value": value}},
+            }
+        )
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [[1, 2], [3]],
+            ["a", "b"],
+            [{"a": 1}],
+        ],
+        ids=["ragged", "strings", "dicts"],
+    )
+    def test_unwritable_top_level_arrays_are_dropped(self, value):
+        promoted = self._promote({"status": "success", "arrays": {"bad": value}})
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [1.0, 2.0],
+            [1, 2, 3],
+            [[1, 2], [3, 4]],
+            [True, False],
+            [],
+        ],
+        ids=["floats", "ints", "nested_rectangular", "bools", "empty"],
+    )
+    def test_writable_lists_are_still_promoted(self, value):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"good": {"type": "array", "value": value}},
+            }
+        )
+        assert promoted["arrays"] == {"good": value}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [1.0, 2.0],
+            [[1, 2], [3, 4]],
+            [True, False],
+            [],
+        ],
+        ids=["floats", "nested_rectangular", "bools", "empty"],
+    )
+    def test_every_promoted_shape_survives_storage(self, value, tmp_path):
+        """The promotion filter is verified against the real storage path."""
+        from core import storage
+        from core.models import ExperimentResult
+
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"good": {"type": "array", "value": value}},
+            }
+        )
+        assert promoted["arrays"] == {"good": value}
+
+        result = ExperimentResult(
+            id="20260727_000000_shapes",
+            type="shapes",
+            timestamp="2026-07-27T00:00:00Z",
+            status="success",
+            arrays=promoted["arrays"],
+        )
+        storage.save_experiment(result, tmp_path)
+        loaded = storage.load_experiment(result.id, tmp_path)
+
+        assert loaded is not None
+        assert loaded.arrays == {"good": value}

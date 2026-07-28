@@ -20,6 +20,8 @@ import subprocess
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from .discovery import get_experiment_schema
 from .models import ExperimentSchema, ParameterSpec
 
@@ -293,7 +295,7 @@ def _collect_arrays(result: dict) -> dict:
     existing = result.get("arrays")
     if isinstance(existing, dict):
         for key, value in existing.items():
-            if isinstance(value, list):
+            if _is_persistable_array(value):
                 collected[key] = value
 
     # Tagged values, which need unwrapping.
@@ -304,14 +306,35 @@ def _collect_arrays(result: dict) -> dict:
         for key, value in container.items():
             if key in collected:
                 continue
-            if (
-                isinstance(value, dict)
-                and value.get("type") == "array"
-                and isinstance(value.get("value"), list)
-            ):
-                collected[key] = value["value"]
+            if isinstance(value, dict) and value.get("type") == "array":
+                candidate = value.get("value")
+                if _is_persistable_array(candidate):
+                    collected[key] = candidate
 
     return collected
+
+
+def _is_persistable_array(value: any) -> bool:
+    """Report whether storage could write this value and read it back.
+
+    Being a list is not sufficient. core/storage.py builds the dataset with
+    np.array() and reads it back by slicing with [:], so a ragged list raises
+    from numpy and a list of strings, mappings or None raises from h5py for
+    want of a native dtype. Mirroring the real write here keeps a malformed
+    array from turning an otherwise successful run into a save failure.
+    """
+    if not isinstance(value, list):
+        return False
+
+    try:
+        array = np.asarray(value)
+    except (ValueError, TypeError):
+        # Ragged nesting cannot become a rectangular array.
+        return False
+
+    return np.issubdtype(array.dtype, np.number) or np.issubdtype(
+        array.dtype, np.bool_
+    )
 
 
 def _check_type(value: any, type_name: str) -> bool:
