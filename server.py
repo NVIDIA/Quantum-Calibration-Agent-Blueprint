@@ -1140,16 +1140,28 @@ async def get_experiment_script(name: str):
 WORKFLOWS_DIR = ROOT_DIR / "data" / "workflows"
 
 
-def _load_workflow(workflow_id: str) -> dict | None:
-    """Load workflow.json for a workflow."""
-    workflow_dir = WORKFLOWS_DIR / workflow_id
-    workflow_file = workflow_dir / "workflow.json"
+WORKFLOW_NOT_FOUND = "workflow-not-found"
+
+
+def _load_workflow(workflow_id: str) -> tuple[Any, str | None]:
+    """Load workflow.json for a workflow, returning (data, error).
+
+    `data` is whatever the file parsed to, which may legitimately be any JSON
+    value including None. Callers must therefore branch on `error` rather than
+    on the value of `data`: returning None alone cannot distinguish an absent
+    file from a file holding the literal `null`, and collapsing the two hides
+    malformed persisted data behind a not-found result.
+
+    `error` is WORKFLOW_NOT_FOUND when there is no file, a description when the
+    file could not be read or parsed, and None when `data` is trustworthy.
+    """
+    workflow_file = WORKFLOWS_DIR / workflow_id / "workflow.json"
     if not workflow_file.exists():
-        return None
+        return None, WORKFLOW_NOT_FOUND
     try:
-        return json.loads(workflow_file.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+        return json.loads(workflow_file.read_text(encoding="utf-8")), None
+    except (OSError, ValueError) as exc:
+        return None, f"workflow.json could not be read: {exc}"
 
 
 def _is_process_running(workflow_id: str) -> bool:
@@ -1175,13 +1187,15 @@ def _is_process_running(workflow_id: str) -> bool:
 
 def _get_workflow_summary(workflow_id: str) -> dict | None:
     """Get workflow summary for list view."""
-    wf = _load_workflow(workflow_id)
-    # A falsy value here is malformed persisted data, not a missing workflow,
-    # and it needs to reach the structural check below to be reported as such.
-    if wf is None:
+    wf, load_error = _load_workflow(workflow_id)
+    if load_error == WORKFLOW_NOT_FOUND:
         return None
 
-    nodes, nodes_error = get_workflow_nodes(wf)
+    # Anything else that parsed, including the literal null, is persisted data
+    # that exists and is malformed, so it is reported rather than omitted.
+    nodes_error = load_error
+    if not nodes_error:
+        nodes, nodes_error = get_workflow_nodes(wf)
     if nodes_error:
         return {
             "workflow_id": workflow_id,
@@ -1238,11 +1252,13 @@ async def list_workflows():
 @app.get("/workflows/{workflow_id}")
 async def get_workflow(workflow_id: str):
     """Get full workflow details."""
-    wf = _load_workflow(workflow_id)
-    if wf is None:
+    wf, load_error = _load_workflow(workflow_id)
+    if load_error == WORKFLOW_NOT_FOUND:
         return {"error": f"Workflow '{workflow_id}' not found"}
 
-    nodes, nodes_error = get_workflow_nodes(wf)
+    nodes_error = load_error
+    if not nodes_error:
+        nodes, nodes_error = get_workflow_nodes(wf)
     if nodes_error:
         return {"error": "Invalid workflow data", "details": nodes_error}
     completed = sum(1 for n in nodes if n.get("state") == "success")
