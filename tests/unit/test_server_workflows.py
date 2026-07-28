@@ -74,3 +74,35 @@ async def test_list_workflows_survives_node_missing_fields(partial_node_workflow
 
     assert result["workflows"][0]["workflow_id"] == "partial"
     assert "error" not in result["workflows"][0]
+
+
+@pytest.fixture
+def falsy_workflow(tmp_path, monkeypatch):
+    """A persisted workflow whose JSON value is falsy but present."""
+    workflows_dir = tmp_path / "workflows"
+    workflow_dir = workflows_dir / "empty"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "workflow.json").write_text("[]")
+    monkeypatch.setattr(server, "WORKFLOWS_DIR", workflows_dir)
+    return workflows_dir
+
+
+@pytest.mark.asyncio
+async def test_falsy_workflow_is_invalid_not_missing(falsy_workflow):
+    """A malformed persisted workflow is a validation error, not a 404.
+
+    The falsy check treated a persisted [] or {} as an
+    absent workflow, so the structural error was never reported.
+    """
+    result = await server.get_workflow("empty")
+
+    assert result["error"] == "Invalid workflow data"
+    assert "must be an object" in result["details"]
+
+
+@pytest.mark.asyncio
+async def test_falsy_workflow_is_listed_with_its_error(falsy_workflow):
+    result = await server.list_workflows()
+
+    assert result["workflows"][0]["workflow_id"] == "empty"
+    assert "error" in result["workflows"][0]

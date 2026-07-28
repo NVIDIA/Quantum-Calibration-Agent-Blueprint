@@ -1176,7 +1176,9 @@ def _is_process_running(workflow_id: str) -> bool:
 def _get_workflow_summary(workflow_id: str) -> dict | None:
     """Get workflow summary for list view."""
     wf = _load_workflow(workflow_id)
-    if not wf:
+    # A falsy value here is malformed persisted data, not a missing workflow,
+    # and it needs to reach the structural check below to be reported as such.
+    if wf is None:
         return None
 
     nodes, nodes_error = get_workflow_nodes(wf)
@@ -1237,7 +1239,7 @@ async def list_workflows():
 async def get_workflow(workflow_id: str):
     """Get full workflow details."""
     wf = _load_workflow(workflow_id)
-    if not wf:
+    if wf is None:
         return {"error": f"Workflow '{workflow_id}' not found"}
 
     nodes, nodes_error = get_workflow_nodes(wf)

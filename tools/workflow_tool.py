@@ -61,7 +61,14 @@ def _apply_changes(data: dict, changes: dict) -> dict:
 
             # Navigate to parent of final key
             for i, part in enumerate(parts[:-1]):
-                if part == "nodes" and isinstance(target.get("nodes"), list):
+                # A dot path can address a value that is not a mapping, so the
+                # container has to be re-checked at every step rather than
+                # only at the start.
+                if (
+                    part == "nodes"
+                    and isinstance(target, dict)
+                    and isinstance(target.get("nodes"), list)
+                ):
                     # Next part should be node ID
                     target = target["nodes"]
                 elif isinstance(target, list):
@@ -516,6 +523,13 @@ def _validate_dag(nodes: list) -> tuple[bool, str]:
     for node in nodes:
         if "id" not in node:
             return False, f"Node missing 'id' field: {node}"
+        # The ID is about to be added to a set and compared against, so it has
+        # to be a usable key before that happens.
+        if not isinstance(node["id"], str) or not node["id"]:
+            return False, (
+                f"Node 'id' must be a non-empty string, "
+                f"got {type(node['id']).__name__}"
+            )
         if "name" not in node:
             return False, f"Node '{node['id']}' missing 'name' field"
         if node["id"] in node_ids:

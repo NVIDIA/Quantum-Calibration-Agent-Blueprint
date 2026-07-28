@@ -492,3 +492,31 @@ class TestWorkflowIntegration:
         data = json.loads(wf_file.read_text())
         assert data["status"] == "running"
         assert data["nodes"][0]["state"] == "pending"
+
+
+class TestApplyChangesMalformedPaths:
+    """A dot path can address a value that is not a mapping.
+
+    The traversal called .get() on whatever it had
+    reached without re-checking it was still a mapping, so a payload that was
+    itself a valid mapping could still raise.
+    """
+
+    def test_dot_path_through_non_mapping_does_not_raise(self):
+        result = _apply_changes(
+            {"id": "crash"}, {"foo": [], "foo.nodes.state": "running"}
+        )
+        assert result["foo"] == []
+
+    def test_dot_path_through_scalar_does_not_raise(self):
+        result = _apply_changes(
+            {"id": "crash"}, {"foo": 3, "foo.nodes.state": "running"}
+        )
+        assert result["foo"] == 3
+
+    def test_nodes_path_through_non_mapping_does_not_raise(self):
+        result = _apply_changes(
+            {"id": "crash", "nodes": "not a list"},
+            {"nodes.n1.state": "running"},
+        )
+        assert result["nodes"] == "not a list"

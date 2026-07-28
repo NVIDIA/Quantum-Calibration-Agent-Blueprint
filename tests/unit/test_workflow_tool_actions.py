@@ -837,3 +837,15 @@ class TestReadPathsSurviveMalformedData:
         result = workflow.func(action="list")
         assert isinstance(result, dict)
         assert "workflows" in result
+
+
+class TestValidateDagUnhashableNodeId:
+    """_validate_dag adds node IDs to a set, so they must be usable keys."""
+
+    @pytest.mark.parametrize("node_id", [[], {}, None, 3, ""])
+    def test_unusable_node_id_returns_error(self, node_id):
+        valid, msg = _validate_dag(
+            [{"id": node_id, "name": "A", "dependencies": []}]
+        )
+        assert valid is False
+        assert "id" in msg.lower()
