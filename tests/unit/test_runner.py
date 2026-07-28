@@ -411,8 +411,14 @@ def array_experiment(
         # Scalars must not leak into arrays.
         assert "t1_time" not in result["arrays"]
 
-    def test_existing_arrays_not_clobbered(self, temp_scripts_dir):
-        """A script providing its own top-level `arrays` is left untouched."""
+    def test_existing_arrays_win_but_do_not_suppress_promotion(
+        self, temp_scripts_dir
+    ):
+        """Top-level `arrays` entries win, and tagged arrays still extend them.
+
+        Precedence is `arrays` > `results` > `data` with first writer wins, so
+        `freq` keeps the script's own value while `mag` is still promoted.
+        """
         script = temp_scripts_dir / "prebuilt_arrays_experiment.py"
         script.write_text(
             '''
@@ -432,7 +438,7 @@ def prebuilt_arrays_experiment(
         result = run_experiment(
             "prebuilt_arrays_experiment", {"param1": 5.0}, temp_scripts_dir
         )
-        assert result["arrays"] == {"freq": [1.0, 2.0]}
+        assert result["arrays"] == {"freq": [1.0, 2.0], "mag": [9.0]}
 
     def test_no_arrays_yields_empty_dict(self, temp_scripts_dir):
         """A result with only scalars yields an empty arrays dict, not a crash."""
@@ -455,3 +461,142 @@ def scalar_only_experiment(
             "scalar_only_experiment", {"param1": 5.0}, temp_scripts_dir
         )
         assert result["arrays"] == {}
+
+
+class TestArrayPromotionAcrossContainers:
+    """Tagged arrays must be collected from every container, not just one."""
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    def test_results_does_not_shadow_data(self):
+        """A non-empty `results` must not hide tagged arrays in `data`.
+
+        The single-container selection previously picked `results` because it
+        was truthy and never inspected `data`, so the array never reached the
+        HDF5 arrays group this promotion exists to fill.
+        """
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": {"fit": 1.0},
+                "data": {"signal": {"type": "array", "value": [1, 2, 3]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal": [1, 2, 3]}
+
+    def test_both_containers_are_merged(self):
+        """Tagged arrays in `results` and `data` are combined."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": {"a": {"type": "array", "value": [1]}},
+                "data": {"b": {"type": "array", "value": [2]}},
+            }
+        )
+        assert promoted["arrays"] == {"a": [1], "b": [2]}
+
+    def test_results_wins_name_collision(self):
+        """On a duplicate name, `results` takes precedence over `data`."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": {"x": {"type": "array", "value": [1]}},
+                "data": {"x": {"type": "array", "value": [2]}},
+            }
+        )
+        assert promoted["arrays"] == {"x": [1]}
+
+    def test_non_dict_results_does_not_block_data(self):
+        """A truthy non-dict `results` must not suppress promotion from `data`."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": ["not", "a", "mapping"],
+                "data": {"signal": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal": [1, 2]}
+
+    def test_non_dict_top_level_arrays_is_replaced(self):
+        """A non-dict top-level `arrays` must not reach storage."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "arrays": "not a mapping",
+                "data": {"signal": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal": [1, 2]}
+
+    @pytest.mark.parametrize(
+        "tagged",
+        [
+            {"type": "scalar", "value": 42.0},
+            {"type": "array"},
+            {"type": "array", "value": 42.0},
+            {"type": "array", "value": "abc"},
+            {"type": "array", "value": {"a": 1}},
+        ],
+    )
+    def test_invalid_tagged_entries_are_skipped(self, tagged):
+        """Only a tagged array whose value is a list is promoted."""
+        promoted = self._promote(
+            {"status": "success", "data": {"candidate": tagged}}
+        )
+        assert promoted["arrays"] == {}
+
+    def test_non_list_top_level_array_value_is_dropped(self):
+        """A top-level `arrays` entry that is not a list is not persisted."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "arrays": {"good": [1, 2], "bad": 42.0},
+            }
+        )
+        assert promoted["arrays"] == {"good": [1, 2]}
+
+
+class TestPromotedArraysArePersistable:
+    """Every promoted array must survive the real storage round trip."""
+
+    def test_promoted_arrays_round_trip_through_storage(self, tmp_path):
+        """Promotion output is written to and read back from HDF5 unchanged."""
+        from core import storage
+        from core.models import ExperimentResult
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        promoted = _parse_and_validate_result(
+            _json.dumps(
+                {
+                    "status": "success",
+                    "results": {"fit": 1.0, "trace": {"type": "array", "value": [1.0, 2.0]}},
+                    "data": {
+                        "signal": {"type": "array", "value": [3.0, 4.0, 5.0]},
+                        "scalar": {"type": "scalar", "value": 9.0},
+                    },
+                }
+            )
+        )
+        assert promoted["arrays"] == {
+            "trace": [1.0, 2.0],
+            "signal": [3.0, 4.0, 5.0],
+        }
+
+        result = ExperimentResult(
+            id="20260727_000000_round_trip",
+            type="round_trip",
+            timestamp="2026-07-27T00:00:00Z",
+            status="success",
+            arrays=promoted["arrays"],
+        )
+        storage.save_experiment(result, tmp_path)
+
+        loaded = storage.load_experiment(result.id, tmp_path)
+        assert loaded is not None
+        assert loaded.arrays == promoted["arrays"]

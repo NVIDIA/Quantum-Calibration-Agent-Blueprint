@@ -268,22 +268,50 @@ def _parse_and_validate_result(stdout: str) -> dict:
     if result["status"] == "failed" and "error" not in result:
         raise RuntimeError("Failed experiment must include 'error' field")
 
-    # Promote tagged arrays to a top-level `arrays` key so downstream consumers
-    # (lab tool, CLI) persist them into the queryable HDF5 `arrays` group.
-    # Scripts return arrays nested under `data`/`results` tagged `type:"array"`;
-    # nothing else extracts them, so the array-access surface would stay empty.
-    if not result.get("arrays"):
-        data = result.get("results") or result.get("data") or {}
-        if isinstance(data, dict):
-            result["arrays"] = {
-                key: value["value"]
-                for key, value in data.items()
-                if isinstance(value, dict)
-                and value.get("type") == "array"
-                and "value" in value
-            }
+    result["arrays"] = _collect_arrays(result)
 
     return result
+
+
+def _collect_arrays(result: dict) -> dict:
+    """Gather every persistable array from a result into one mapping.
+
+    Scripts return arrays nested under `results`/`data` tagged `type:"array"`,
+    and may also supply a top-level `arrays` mapping of raw values. Nothing
+    else extracts the tagged form, so without this the queryable HDF5 `arrays`
+    group would stay empty for those scripts.
+
+    Precedence is the top-level `arrays` mapping, then `results`, then `data`,
+    and the first writer of a name wins. Anything already present is therefore
+    preserved rather than replaced, while names it does not define are still
+    added. Entries that storage could not write are skipped rather than
+    raising, since a malformed array should not fail an otherwise good run.
+    """
+    collected: dict = {}
+
+    # Raw values, already in the shape storage expects.
+    existing = result.get("arrays")
+    if isinstance(existing, dict):
+        for key, value in existing.items():
+            if isinstance(value, list):
+                collected[key] = value
+
+    # Tagged values, which need unwrapping.
+    for container_name in ("results", "data"):
+        container = result.get(container_name)
+        if not isinstance(container, dict):
+            continue
+        for key, value in container.items():
+            if key in collected:
+                continue
+            if (
+                isinstance(value, dict)
+                and value.get("type") == "array"
+                and isinstance(value.get("value"), list)
+            ):
+                collected[key] = value["value"]
+
+    return collected
 
 
 def _check_type(value: any, type_name: str) -> bool:
