@@ -705,3 +705,73 @@ class TestOnlyPersistableArraysArePromoted:
 
         assert loaded is not None
         assert loaded.arrays == {"good": value}
+
+
+class TestArrayNamesMustBePersistable:
+    """A promoted name becomes an HDF5 dataset name, so it must be usable.
+
+    The value was validated but the key was not: an
+    empty name is invalid, "." and ".." address existing groups rather than a
+    new dataset, and a name containing "/" silently creates intermediate
+    groups that load_experiment then tries to slice as a dataset.
+    """
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    @pytest.mark.parametrize(
+        "name", ["", ".", "..", "/", "a/b", "nested/deep/name"]
+    )
+    def test_unusable_names_are_not_promoted(self, name):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {name: {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize("name", ["", ".", "a/b"])
+    def test_unusable_names_in_top_level_arrays_are_dropped(self, name):
+        promoted = self._promote({"status": "success", "arrays": {name: [1, 2]}})
+        assert promoted["arrays"] == {}
+
+    def test_usable_names_still_promote(self):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"signal_1": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal_1": [1, 2]}
+
+    def test_promoted_name_survives_storage(self, tmp_path):
+        """Verified against the real write, not against an assumption."""
+        from core import storage
+        from core.models import ExperimentResult
+
+        promoted = self._promote(
+            {
+                "status": "success",
+                "arrays": {"bad/name": [9, 9]},
+                "data": {"good_name": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"good_name": [1, 2]}
+
+        result = ExperimentResult(
+            id="20260727_000000_names",
+            type="names",
+            timestamp="2026-07-27T00:00:00Z",
+            status="success",
+            arrays=promoted["arrays"],
+        )
+        storage.save_experiment(result, tmp_path)
+        loaded = storage.load_experiment(result.id, tmp_path)
+
+        assert loaded is not None
+        assert loaded.arrays == {"good_name": [1, 2]}

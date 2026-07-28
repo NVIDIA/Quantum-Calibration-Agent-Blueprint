@@ -295,7 +295,7 @@ def _collect_arrays(result: dict) -> dict:
     existing = result.get("arrays")
     if isinstance(existing, dict):
         for key, value in existing.items():
-            if _is_persistable_array(value):
+            if _is_persistable_name(key) and _is_persistable_array(value):
                 collected[key] = value
 
     # Tagged values, which need unwrapping.
@@ -304,7 +304,7 @@ def _collect_arrays(result: dict) -> dict:
         if not isinstance(container, dict):
             continue
         for key, value in container.items():
-            if key in collected:
+            if key in collected or not _is_persistable_name(key):
                 continue
             if isinstance(value, dict) and value.get("type") == "array":
                 candidate = value.get("value")
@@ -312,6 +312,21 @@ def _collect_arrays(result: dict) -> dict:
                     collected[key] = candidate
 
     return collected
+
+
+def _is_persistable_name(name: any) -> bool:
+    """Report whether storage could use this name as an HDF5 dataset name.
+
+    Names become dataset names directly. An empty name is not a valid one,
+    "." and ".." address the current and parent group rather than a new
+    dataset, and a name containing "/" creates intermediate groups, which
+    load_experiment then tries to slice as if it were a dataset.
+    """
+    if not isinstance(name, str) or not name:
+        return False
+    if "/" in name or "\x00" in name:
+        return False
+    return name not in (".", "..")
 
 
 def _is_persistable_array(value: any) -> bool:
