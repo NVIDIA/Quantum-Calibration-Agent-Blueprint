@@ -17,6 +17,7 @@
 
 import ast
 import json
+import math
 from pathlib import Path
 from typing import Optional
 
@@ -276,7 +277,13 @@ def _parse_annotated(subscript: ast.Subscript) -> dict:
         values = [_eval_literal(el) for el in constraint_node.elts]
         values = [v for v in values if v is not None]
 
-        if len(values) >= 2 and all(isinstance(v, (int, float)) for v in values):
+        # A range also reaches the schema JSON that the CLI prints, so a
+        # non-finite bound would escape as the non-standard Infinity token
+        # just as a non-finite default would. An unbounded range is dropped
+        # rather than recorded.
+        if len(values) >= 2 and all(
+            isinstance(v, (int, float)) and math.isfinite(v) for v in values
+        ):
             result["range"] = (values[0], values[1])
 
     return result
