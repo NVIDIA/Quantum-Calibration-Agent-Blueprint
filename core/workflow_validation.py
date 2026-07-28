@@ -23,3 +23,45 @@ def get_workflow_nodes(data: Any) -> tuple[list[dict[str, Any]] | None, str | No
             )
 
     return nodes, None
+
+
+def get_node_dependencies(node: Any) -> tuple[list[str] | None, str | None]:
+    """Return a node's dependency IDs or a user-facing structural error.
+
+    Every element is checked before any caller compares it against the set of
+    known node IDs. An unhashable element such as a list or dict would
+    otherwise raise TypeError from that membership test rather than producing
+    a validation result.
+    """
+    node_id = node.get("id", "unknown") if isinstance(node, dict) else "unknown"
+    deps = node.get("dependencies", []) if isinstance(node, dict) else None
+
+    if not isinstance(deps, list):
+        return (
+            None,
+            f"Node '{node_id}' dependencies must be a list, "
+            f"got {type(deps).__name__}",
+        )
+
+    for index, dep in enumerate(deps):
+        if not isinstance(dep, str) or not dep:
+            return (
+                None,
+                f"Node '{node_id}' dependencies[{index}] must be a non-empty "
+                f"string, got {type(dep).__name__}",
+            )
+
+    return deps, None
+
+
+def is_hashable(value: Any) -> bool:
+    """Report whether a value can be compared against a set of valid values.
+
+    Persisted workflows can carry a list or dict where a status string is
+    expected, and membership tests against the valid-value sets raise on those.
+    """
+    try:
+        hash(value)
+    except TypeError:
+        return False
+    return True

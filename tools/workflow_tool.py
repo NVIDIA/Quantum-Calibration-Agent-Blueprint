@@ -24,7 +24,11 @@ from uuid import uuid4
 
 from langchain_core.tools import tool
 
-from core.workflow_validation import get_workflow_nodes
+from core.workflow_validation import (
+    get_node_dependencies,
+    get_workflow_nodes,
+    is_hashable,
+)
 
 ROOT_DIR = Path(__file__).parent.parent
 WORKFLOWS_DIR = ROOT_DIR / "data" / "workflows"
@@ -315,18 +319,16 @@ def _validate_workflow_comprehensive(
     node_id_set = set(node_ids)
     invalid_deps = []
     for node in nodes:
-        deps = node.get("dependencies", [])
-        if not isinstance(deps, list):
+        deps, deps_error = get_node_dependencies(node)
+        if deps_error:
             result["checks"].append(
                 {
                     "check": "dependencies_valid",
                     "passed": False,
-                    "message": f"Node '{node['id']}' dependencies must be a list",
+                    "message": deps_error,
                 }
             )
-            result["errors"].append(
-                f"Node '{node['id']}' dependencies must be a list, got {type(deps).__name__}"
-            )
+            result["errors"].append(deps_error)
             return result
         for dep in deps:
             if dep not in node_id_set:
@@ -368,7 +370,9 @@ def _validate_workflow_comprehensive(
 
     # Check 11: Workflow status value (warning)
     wf_status = data.get("status", "created")
-    if wf_status not in VALID_WORKFLOW_STATUSES:
+    # An unhashable status cannot be a valid one, and testing it against the
+    # set directly would raise instead of producing a warning.
+    if not is_hashable(wf_status) or wf_status not in VALID_WORKFLOW_STATUSES:
         result["checks"].append(
             {
                 "check": "workflow_status_valid",
@@ -392,8 +396,8 @@ def _validate_workflow_comprehensive(
     invalid_states = []
     for node in nodes:
         state = node.get("state", "pending")
-        if state not in VALID_NODE_STATES:
-            invalid_states.append({"node": node["id"], "state": state})
+        if not is_hashable(state) or state not in VALID_NODE_STATES:
+            invalid_states.append({"node": node.get("id"), "state": state})
 
     if invalid_states:
         result["checks"].append(
@@ -520,7 +524,9 @@ def _validate_dag(nodes: list) -> tuple[bool, str]:
 
     # Check all dependencies reference valid nodes
     for node in nodes:
-        deps = node.get("dependencies", [])
+        deps, deps_error = get_node_dependencies(node)
+        if deps_error:
+            return False, deps_error
         for dep in deps:
             if dep not in node_ids:
                 return False, f"Node '{node['id']}' has invalid dependency '{dep}'"
@@ -602,10 +608,10 @@ def _format_status(data: dict, history: list[dict]) -> dict:
     current_node_info = None
     if current_node:
         for n in nodes:
-            if n["id"] == current_node:
+            if n.get("id") == current_node:
                 current_node_info = {
-                    "id": n["id"],
-                    "name": n["name"],
+                    "id": n.get("id"),
+                    "name": n.get("name"),
                     "state": n.get("state", "pending"),
                     "run_count": n.get("run_count", 0),
                 }
@@ -628,8 +634,8 @@ def _format_status(data: dict, history: list[dict]) -> dict:
         "current_node": current_node_info,
         "nodes": [
             {
-                "id": n["id"],
-                "name": n["name"],
+                "id": n.get("id"),
+                "name": n.get("name"),
                 "dependencies": n.get("dependencies", []),
                 "state": n.get("state", "pending"),
                 "run_count": n.get("run_count", 0),
@@ -776,6 +782,13 @@ def workflow(
         if not data:
             return {"error": "data required"}
 
+        if not isinstance(data, dict):
+            return {
+                "error": (
+                    f"data must be an object, got {type(data).__name__}"
+                )
+            }
+
         wf_dir = WORKFLOWS_DIR / workflow_id
         wf_file = wf_dir / "workflow.json"
 
@@ -789,6 +802,17 @@ def workflow(
         else:
             existing = {"id": workflow_id}
             is_new = True
+
+        # A previously persisted top-level non-object cannot be merged into.
+        # Reject it here so the recovery path reports the problem instead of
+        # raising from the dot-notation traversal below.
+        if not isinstance(existing, dict):
+            return {
+                "error": (
+                    f"Existing workflow.json must be an object, "
+                    f"got {type(existing).__name__}"
+                )
+            }
 
         # Apply changes
         merged = _apply_changes(existing, data)

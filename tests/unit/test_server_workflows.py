@@ -36,3 +36,41 @@ async def test_list_workflows_reports_non_object_node(malformed_workflow):
 
     assert result["workflows"][0]["workflow_id"] == "bad_node"
     assert "must be an object" in result["workflows"][0]["error"]
+
+
+@pytest.fixture
+def partial_node_workflow(tmp_path, monkeypatch):
+    """A workflow whose node is an object but is missing required fields."""
+    workflows_dir = tmp_path / "workflows"
+    workflow_dir = workflows_dir / "partial"
+    workflow_dir.mkdir(parents=True)
+    (workflow_dir / "workflow.json").write_text(
+        json.dumps(
+            {
+                "id": "partial",
+                "name": "Partial",
+                "nodes": [{"state": "success"}],
+            }
+        )
+    )
+    monkeypatch.setattr(server, "WORKFLOWS_DIR", workflows_dir)
+    return workflows_dir
+
+
+@pytest.mark.asyncio
+async def test_get_workflow_survives_node_missing_fields(partial_node_workflow):
+    """A node missing 'id'/'name' must not raise KeyError from the endpoint."""
+    result = await server.get_workflow("partial")
+
+    assert "error" not in result
+    assert result["nodes"][0]["id"] is None
+    assert result["nodes"][0]["name"] is None
+
+
+@pytest.mark.asyncio
+async def test_list_workflows_survives_node_missing_fields(partial_node_workflow):
+    """The list endpoint must not raise on nodes missing required fields."""
+    result = await server.list_workflows()
+
+    assert result["workflows"][0]["workflow_id"] == "partial"
+    assert "error" not in result["workflows"][0]
