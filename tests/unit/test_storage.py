@@ -537,3 +537,28 @@ class TestReindex:
         loaded = load_experiment("rebuild_test", temp_data_dir)
         assert loaded is not None
         assert loaded.id == "rebuild_test"
+
+
+class TestArrayStatsOnEmptyArray:
+    """An empty array is legitimate data; the reductions raise on zero size."""
+
+    def test_stats_for_empty_array_do_not_raise(self, tmp_path):
+        from core import storage
+        from core.models import ExperimentResult
+
+        result = ExperimentResult(
+            id="20260728_000000_empty",
+            type="empty",
+            timestamp="2026-07-28T00:00:00Z",
+            status="success",
+            arrays={"nothing": [], "something": [1.0, 3.0]},
+        )
+        storage.save_experiment(result, tmp_path)
+
+        empty = storage.get_array_stats(result.id, "nothing", tmp_path)
+        assert empty["count"] == 0
+        assert empty["min"] is None and empty["max"] is None
+
+        filled = storage.get_array_stats(result.id, "something", tmp_path)
+        assert filled["count"] == 2
+        assert filled["min"] == 1.0 and filled["max"] == 3.0

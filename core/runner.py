@@ -270,9 +270,39 @@ def _parse_and_validate_result(stdout: str) -> dict:
     if result["status"] == "failed" and "error" not in result:
         raise RuntimeError("Failed experiment must include 'error' field")
 
+    _normalise_result_containers(result)
     result["arrays"] = _collect_arrays(result)
 
     return result
+
+
+def _normalise_result_containers(result: dict) -> None:
+    """Collapse `results` and `data` into one canonical container.
+
+    The documented script return format has no `results` key: a script reports
+    its scalars and tagged arrays under `data`. `results` is the name of the
+    stored field, and the persistence paths tolerate a script that uses it by
+    reading `results` or falling back to `data` — so only one of the two is
+    ever consumed downstream.
+
+    That made it possible for the stored scalars and the stored arrays to
+    describe different subsets of one run: arrays were gathered from both
+    containers while everything else came from whichever container was picked.
+    Merging them here means every consumer sees the same single container.
+    `results` wins a name collision, matching the precedence the persistence
+    paths already apply.
+    """
+    from_results = result.get("results")
+    from_data = result.get("data")
+    if not isinstance(from_results, dict) and not isinstance(from_data, dict):
+        return
+
+    canonical = {}
+    if isinstance(from_data, dict):
+        canonical.update(from_data)
+    if isinstance(from_results, dict):
+        canonical.update(from_results)
+    result["results"] = canonical
 
 
 def _collect_arrays(result: dict) -> dict:
@@ -326,7 +356,15 @@ def _is_persistable_name(name: any) -> bool:
         return False
     if "/" in name or "\x00" in name:
         return False
-    return name not in (".", "..")
+    if name in (".", ".."):
+        return False
+    # h5py encodes the name as UTF-8. A lone surrogate survives JSON transport
+    # but cannot be encoded, so it would raise only at save time.
+    try:
+        name.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _is_persistable_array(value: any) -> bool:
@@ -347,9 +385,17 @@ def _is_persistable_array(value: any) -> bool:
         # Ragged nesting cannot become a rectangular array.
         return False
 
-    return np.issubdtype(array.dtype, np.number) or np.issubdtype(
-        array.dtype, np.bool_
-    )
+    if not (
+        np.issubdtype(array.dtype, np.number)
+        or np.issubdtype(array.dtype, np.bool_)
+    ):
+        return False
+
+    # The dtype alone does not prove the conversion kept the value. Mixing an
+    # integer too large for a float mantissa with a float yields a float64
+    # array that silently rounds it, so what is read back from storage would
+    # differ from what the experiment reported.
+    return array.tolist() == value
 
 
 def _check_type(value: any, type_name: str) -> bool:

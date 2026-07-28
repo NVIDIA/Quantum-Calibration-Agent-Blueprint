@@ -775,3 +775,128 @@ class TestArrayNamesMustBePersistable:
 
         assert loaded is not None
         assert loaded.arrays == {"good_name": [1, 2]}
+
+
+class TestResultContainersAreNormalised:
+    """`results` and `data` collapse into one container before persistence.
+
+    The documented script return format has no `results` key; scalars and
+    tagged arrays go under `data`, and `results` is the stored field name that
+    the persistence paths tolerate as an alias. Because only one container is
+    ever read downstream while arrays were gathered from both, the stored
+    scalars and the stored arrays could describe different subsets of one run.
+    """
+
+    @staticmethod
+    def _parse(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    @staticmethod
+    def _downstream(result):
+        """What the CLI and lab persistence paths read."""
+        container = result.get("results") or result.get("data", {})
+        return container if isinstance(container, dict) else {}
+
+    def test_scalars_and_arrays_come_from_the_same_container(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "results": {"fit": 1.0},
+                "data": {"signal": {"type": "array", "value": [1, 2, 3]}},
+            }
+        )
+        stored = self._downstream(parsed)
+
+        assert stored["fit"] == 1.0
+        assert "signal" in stored
+        assert parsed["arrays"] == {"signal": [1, 2, 3]}
+
+    def test_documented_data_only_form_is_unchanged(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "data": {
+                    "t1": {"type": "scalar", "value": 42.0},
+                    "signal": {"type": "array", "value": [1, 2]},
+                },
+            }
+        )
+        stored = self._downstream(parsed)
+
+        assert set(stored) == {"t1", "signal"}
+        assert parsed["arrays"] == {"signal": [1, 2]}
+
+    def test_results_wins_a_name_collision(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "results": {"x": {"type": "array", "value": [1]}},
+                "data": {"x": {"type": "array", "value": [9]}},
+            }
+        )
+        assert parsed["arrays"] == {"x": [1]}
+        assert self._downstream(parsed)["x"]["value"] == [1]
+
+    def test_non_dict_results_does_not_shadow_data(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "results": ["not a mapping"],
+                "data": {"signal": {"type": "array", "value": [7]}},
+            }
+        )
+        assert self._downstream(parsed) == {
+            "signal": {"type": "array", "value": [7]}
+        }
+        assert parsed["arrays"] == {"signal": [7]}
+
+
+class TestArrayConversionIsLossless:
+    """A numeric dtype is not proof the conversion preserved the value."""
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    def test_integer_beyond_float_mantissa_is_rejected(self):
+        """Mixing a large int with a float silently rounds it to float64."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {
+                    "lossy": {
+                        "type": "array",
+                        "value": [9007199254740993, 0.5],
+                    }
+                },
+            }
+        )
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize(
+        "value",
+        [[1, 2, 3], [1.0, 2.5], [[1, 2], [3, 4]], [True, False], [9007199254740993]],
+        ids=["ints", "floats", "nested", "bools", "big_int_alone"],
+    )
+    def test_lossless_values_are_still_promoted(self, value):
+        promoted = self._promote(
+            {"status": "success", "data": {"ok": {"type": "array", "value": value}}}
+        )
+        assert promoted["arrays"] == {"ok": value}
+
+    @pytest.mark.parametrize("name", ["bad\ud800name", "\udfff"])
+    def test_names_that_cannot_be_encoded_are_rejected(self, name):
+        """h5py encodes the name as UTF-8; a lone surrogate raises there."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {name: {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {}
