@@ -85,8 +85,12 @@ def validate_params(params: dict, schema: ExperimentSchema) -> list[str]:
             min_val, max_val = spec.range
             # An open bound is recorded as None, because the infinity that
             # would otherwise express it is not portable JSON.
-            below = min_val is not None and param_value < min_val
-            above = max_val is not None and param_value > max_val
+            #
+            # Each side is negated rather than compared directly so that NaN,
+            # which returns false for every comparison, still fails the check
+            # instead of silently satisfying both sides.
+            below = min_val is not None and not (param_value >= min_val)
+            above = max_val is not None and not (param_value <= max_val)
             if below or above:
                 errors.append(
                     f"Parameter {param_name} out of range. "

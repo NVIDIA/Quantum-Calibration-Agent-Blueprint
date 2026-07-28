@@ -436,3 +436,43 @@ def failed_with_error_experiment(
         assert len(errors) == 2
         assert any("param1" in e for e in errors)
         assert any("param2" in e for e in errors)
+
+
+class TestRangeChecksRejectNonFinite:
+    """A range check must reject NaN, which compares false against everything.
+
+    Rewriting the chained
+    comparison as two one-sided checks let NaN satisfy both sides.
+    """
+
+    @staticmethod
+    def _schema(rng):
+        return ExperimentSchema(
+            name="e",
+            description="",
+            module_path="/tmp/e.py",
+            parameters=[
+                ParameterSpec(name="x", type="float", required=True, range=rng)
+            ],
+        )
+
+    @pytest.mark.parametrize("rng", [(0.0, 10.0), (0.0, None), (None, 10.0)])
+    def test_nan_is_rejected(self, rng):
+        errors = validate_params({"x": float("nan")}, self._schema(rng))
+        assert errors != []
+
+    @pytest.mark.parametrize(
+        "rng,value,expected_ok",
+        [
+            ((0.0, 10.0), 5.0, True),
+            ((0.0, 10.0), -1.0, False),
+            ((0.0, 10.0), 11.0, False),
+            ((0.0, None), 1e6, True),
+            ((0.0, None), -1.0, False),
+            ((None, 10.0), -1e6, True),
+            ((None, 10.0), 11.0, False),
+        ],
+    )
+    def test_open_and_closed_bounds(self, rng, value, expected_ok):
+        errors = validate_params({"x": value}, self._schema(rng))
+        assert (errors == []) is expected_ok
