@@ -469,6 +469,17 @@ def edge_defaults(
         # A strict reader rejects the non-standard tokens outright.
         json.loads(encoded, parse_constant=_reject_constant)
 
+    def test_validate_script_output_encodes_under_strict_json(
+        self, non_finite_scripts_dir
+    ):
+        """validate_script embeds the schema, so it needs the same guarantee."""
+        result = validate_script(non_finite_scripts_dir / "edge_defaults.py")
+
+        assert result["valid"] is True
+        encoded = json.dumps(result, allow_nan=False)
+        assert "Infinity" not in encoded
+        json.loads(encoded, parse_constant=_reject_constant)
+
     def test_unresolved_defaults_are_omitted_from_effective_params(
         self, non_finite_scripts_dir
     ):
