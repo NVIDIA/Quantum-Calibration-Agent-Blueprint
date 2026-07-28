@@ -469,11 +469,13 @@ def edge_defaults(
         # A strict reader rejects the non-standard tokens outright.
         json.loads(encoded, parse_constant=_reject_constant)
 
-    def test_non_finite_annotated_range_is_dropped(self, tmp_path):
+    def test_non_finite_annotated_bound_becomes_open(self, tmp_path):
         """A range bound also reaches schema JSON, so it must be finite too.
 
         Fixing the defaults left Annotated ranges able to
-        carry infinity into the same output.
+        carry infinity into the same output. The non-finite bound becomes
+        None, meaning open on that side, so the bound that was finite keeps
+        being enforced.
         """
         scripts_dir = tmp_path / "scripts"
         scripts_dir.mkdir()
@@ -494,11 +496,17 @@ def bad_range(
         assert schema is not None
         by_name = {p.name: p for p in schema.parameters}
 
-        assert by_name["unbounded"].range is None
+        assert by_name["unbounded"].range == (0.0, None)
         assert by_name["bounded"].range == (0.0, 10.0)
 
         encoded = json.dumps(schema.to_dict(), allow_nan=False)
         assert "Infinity" not in encoded
+
+        # The finite bound is still enforced; only the open side is skipped.
+        from core.runner import validate_params
+
+        assert validate_params({"unbounded": -5.0}, schema) != []
+        assert validate_params({"unbounded": 1e6}, schema) == []
 
     def test_validate_script_output_encodes_under_strict_json(
         self, non_finite_scripts_dir

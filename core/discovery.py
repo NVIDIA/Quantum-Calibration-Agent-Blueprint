@@ -279,12 +279,13 @@ def _parse_annotated(subscript: ast.Subscript) -> dict:
 
         # A range also reaches the schema JSON that the CLI prints, so a
         # non-finite bound would escape as the non-standard Infinity token
-        # just as a non-finite default would. An unbounded range is dropped
-        # rather than recorded.
-        if len(values) >= 2 and all(
-            isinstance(v, (int, float)) and math.isfinite(v) for v in values
-        ):
-            result["range"] = (values[0], values[1])
+        # just as a non-finite default would. Such a bound is recorded as
+        # None, which means open on that side: dropping the whole range
+        # instead would silently stop enforcing the bound that was finite.
+        if len(values) >= 2 and all(isinstance(v, (int, float)) for v in values):
+            bounds = [v if math.isfinite(v) else None for v in values[:2]]
+            if any(b is not None for b in bounds):
+                result["range"] = (bounds[0], bounds[1])
 
     return result
 

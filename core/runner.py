@@ -83,7 +83,11 @@ def validate_params(params: dict, schema: ExperimentSchema) -> list[str]:
         # Check range for numeric types
         if spec.range and spec.type in ("int", "float"):
             min_val, max_val = spec.range
-            if not (min_val <= param_value <= max_val):
+            # An open bound is recorded as None, because the infinity that
+            # would otherwise express it is not portable JSON.
+            below = min_val is not None and param_value < min_val
+            above = max_val is not None and param_value > max_val
+            if below or above:
                 errors.append(
                     f"Parameter {param_name} out of range. "
                     f"Expected [{min_val}, {max_val}], got {param_value}"
