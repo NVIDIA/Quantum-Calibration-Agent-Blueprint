@@ -106,6 +106,17 @@ describe('ExperimentDetails parameter layout', () => {
     expect(grid.className).toContain('minmax(0,1fr)');
   });
 
+  it('caps the label track so it cannot starve the value track', () => {
+    renderWithParams({ amplitude: 0.5 });
+
+    const grid = gridFor('amplitude:');
+
+    // An uncapped max-content label track is maximized before the fr track is
+    // expanded, so a long enough name takes the whole width and leaves the
+    // value nothing. The cap keeps a share of the container for the value.
+    expect(grid.className).toContain('min(max-content,45%)');
+  });
+
   it.each([
     ['a long parameter name', { [LONG_NAME]: 0.5 }, `${LONG_NAME}:`],
     ['a long unbroken string', { amplitude: LONG_UNBROKEN_VALUE }, 'amplitude:'],

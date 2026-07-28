@@ -114,7 +114,7 @@ export const ExperimentDetails: React.FC<ExperimentDetailsProps> = ({
     }
 
     return (
-      <div className="grid w-full grid-cols-[minmax(0,max-content)_minmax(0,1fr)] gap-x-4">
+      <div className="grid w-full grid-cols-[minmax(0,min(max-content,45%))_minmax(0,1fr)] gap-x-4">
         {Object.entries(experiment.params).map(([key, value]) => (
           <React.Fragment key={key}>
             <span className="min-w-0 break-words border-b border-gray-100 dark:border-gray-700 py-1 text-sm font-medium text-gray-700 dark:text-gray-300">{key}:</span>
