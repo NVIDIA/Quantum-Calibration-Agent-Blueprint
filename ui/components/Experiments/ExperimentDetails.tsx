@@ -114,14 +114,14 @@ export const ExperimentDetails: React.FC<ExperimentDetailsProps> = ({
     }
 
     return (
-      <div className="space-y-2">
+      <div className="grid w-full grid-cols-[fit-content(45%)_minmax(0,1fr)] gap-x-4">
         {Object.entries(experiment.params).map(([key, value]) => (
-          <div key={key} className="flex justify-between py-1 border-b border-gray-100 dark:border-gray-700">
-            <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{key}:</span>
-            <span className="text-sm text-gray-600 dark:text-gray-400">
+          <React.Fragment key={key}>
+            <span className="min-w-0 break-words border-b border-gray-100 dark:border-gray-700 py-1 text-sm font-medium text-gray-700 dark:text-gray-300">{key}:</span>
+            <span className="min-w-0 break-words border-b border-gray-100 dark:border-gray-700 py-1 text-sm text-gray-600 dark:text-gray-400">
               {typeof value === 'object' ? JSON.stringify(value) : String(value)}
             </span>
-          </div>
+          </React.Fragment>
         ))}
       </div>
     );
