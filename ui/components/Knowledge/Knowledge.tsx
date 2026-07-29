@@ -31,6 +31,9 @@ import {
 } from '@tabler/icons-react';
 
 import remarkGfm from 'remark-gfm';
+
+import { fenceLeadingFrontmatter } from '@/utils/app/frontmatter';
+
 import { getReactMarkDownCustomComponents } from '../Markdown/CustomComponents';
 import { MemoizedReactMarkdown } from '../Markdown/MemoizedReactMarkdown';
 
@@ -90,17 +93,13 @@ export const Knowledge = () => {
     [],
   );
 
-  // Skill docs (and some knowledge files) open with a YAML frontmatter block
-  // (`---\n...\n---`). react-markdown would render it as a horizontal rule
-  // plus raw key/value lines; rewrite it into a fenced yaml code block so
-  // the CodeBlock component can highlight it.
-  const renderedContent = useMemo(() => {
-    const raw = selectedDocument?.content ?? '';
-    return raw.replace(
-      /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/,
-      (_m, body) => '```yaml\n' + body + '\n```\n\n',
-    );
-  }, [selectedDocument?.content]);
+  // Skill docs (and some knowledge files) open with a YAML frontmatter block.
+  // Markdown has no notion of it, so it would render as a horizontal rule plus
+  // raw key/value lines; fencing it lets CodeBlock highlight it as YAML.
+  const renderedContent = useMemo(
+    () => fenceLeadingFrontmatter(selectedDocument?.content ?? ''),
+    [selectedDocument?.content],
+  );
 
   // Load documents on mount
   useEffect(() => {
