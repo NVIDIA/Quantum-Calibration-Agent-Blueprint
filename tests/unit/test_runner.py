@@ -377,3 +377,526 @@ def failed_with_error_experiment(
         assert len(errors) == 2
         assert any("param1" in e for e in errors)
         assert any("param2" in e for e in errors)
+
+
+class TestArrayExtraction:
+    """Tests that tagged arrays are promoted to a top-level `arrays` key."""
+
+    def test_arrays_extracted_from_data(self, temp_scripts_dir):
+        """Arrays tagged in `data` are promoted; scalars are excluded."""
+        script = temp_scripts_dir / "array_experiment.py"
+        script.write_text(
+            '''
+from typing import Annotated
+
+def array_experiment(
+    param1: Annotated[float, (0.0, 10.0)] = 5.0,
+) -> dict:
+    """Experiment returning tagged arrays and a scalar."""
+    return {
+        "status": "success",
+        "data": {
+            "delays": {"type": "array", "value": [0.0, 1.0, 2.0], "unit": "us"},
+            "population": {"type": "array", "value": [0.9, 0.5, 0.2]},
+            "t1_time": {"type": "scalar", "value": 42.0, "unit": "us"},
+        },
+    }
+'''
+        )
+        result = run_experiment("array_experiment", {"param1": 5.0}, temp_scripts_dir)
+        assert result["arrays"] == {
+            "delays": [0.0, 1.0, 2.0],
+            "population": [0.9, 0.5, 0.2],
+        }
+        # Scalars must not leak into arrays.
+        assert "t1_time" not in result["arrays"]
+
+    def test_existing_arrays_win_but_do_not_suppress_promotion(
+        self, temp_scripts_dir
+    ):
+        """Top-level `arrays` entries win, and tagged arrays still extend them.
+
+        Precedence is `arrays` > `results` > `data` with first writer wins, so
+        `freq` keeps the script's own value while `mag` is still promoted.
+        """
+        script = temp_scripts_dir / "prebuilt_arrays_experiment.py"
+        script.write_text(
+            '''
+from typing import Annotated
+
+def prebuilt_arrays_experiment(
+    param1: Annotated[float, (0.0, 10.0)] = 5.0,
+) -> dict:
+    """Experiment that already supplies a top-level arrays key."""
+    return {
+        "status": "success",
+        "arrays": {"freq": [1.0, 2.0]},
+        "data": {"mag": {"type": "array", "value": [9.0]}},
+    }
+'''
+        )
+        result = run_experiment(
+            "prebuilt_arrays_experiment", {"param1": 5.0}, temp_scripts_dir
+        )
+        assert result["arrays"] == {"freq": [1.0, 2.0], "mag": [9.0]}
+
+    def test_no_arrays_yields_empty_dict(self, temp_scripts_dir):
+        """A result with only scalars yields an empty arrays dict, not a crash."""
+        script = temp_scripts_dir / "scalar_only_experiment.py"
+        script.write_text(
+            '''
+from typing import Annotated
+
+def scalar_only_experiment(
+    param1: Annotated[float, (0.0, 10.0)] = 5.0,
+) -> dict:
+    """Experiment returning only scalar data."""
+    return {
+        "status": "success",
+        "data": {"t1_time": {"type": "scalar", "value": 42.0}},
+    }
+'''
+        )
+        result = run_experiment(
+            "scalar_only_experiment", {"param1": 5.0}, temp_scripts_dir
+        )
+        assert result["arrays"] == {}
+
+
+class TestArrayPromotionAcrossContainers:
+    """Tagged arrays must be collected from every container, not just one."""
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    def test_results_does_not_shadow_data(self):
+        """A non-empty `results` must not hide tagged arrays in `data`.
+
+        The single-container selection previously picked `results` because it
+        was truthy and never inspected `data`, so the array never reached the
+        HDF5 arrays group this promotion exists to fill.
+        """
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": {"fit": 1.0},
+                "data": {"signal": {"type": "array", "value": [1, 2, 3]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal": [1, 2, 3]}
+
+    def test_both_containers_are_merged(self):
+        """Tagged arrays in `results` and `data` are combined."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": {"a": {"type": "array", "value": [1]}},
+                "data": {"b": {"type": "array", "value": [2]}},
+            }
+        )
+        assert promoted["arrays"] == {"a": [1], "b": [2]}
+
+    def test_results_wins_name_collision(self):
+        """On a duplicate name, `results` takes precedence over `data`."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": {"x": {"type": "array", "value": [1]}},
+                "data": {"x": {"type": "array", "value": [2]}},
+            }
+        )
+        assert promoted["arrays"] == {"x": [1]}
+
+    def test_non_dict_results_does_not_block_data(self):
+        """A truthy non-dict `results` must not suppress promotion from `data`."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "results": ["not", "a", "mapping"],
+                "data": {"signal": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal": [1, 2]}
+
+    def test_non_dict_top_level_arrays_is_replaced(self):
+        """A non-dict top-level `arrays` must not reach storage."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "arrays": "not a mapping",
+                "data": {"signal": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal": [1, 2]}
+
+    @pytest.mark.parametrize(
+        "tagged",
+        [
+            {"type": "scalar", "value": 42.0},
+            {"type": "array"},
+            {"type": "array", "value": 42.0},
+            {"type": "array", "value": "abc"},
+            {"type": "array", "value": {"a": 1}},
+        ],
+    )
+    def test_invalid_tagged_entries_are_skipped(self, tagged):
+        """Only a tagged array whose value is a list is promoted."""
+        promoted = self._promote(
+            {"status": "success", "data": {"candidate": tagged}}
+        )
+        assert promoted["arrays"] == {}
+
+    def test_non_list_top_level_array_value_is_dropped(self):
+        """A top-level `arrays` entry that is not a list is not persisted."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "arrays": {"good": [1, 2], "bad": 42.0},
+            }
+        )
+        assert promoted["arrays"] == {"good": [1, 2]}
+
+
+class TestPromotedArraysArePersistable:
+    """Every promoted array must survive the real storage round trip."""
+
+    def test_promoted_arrays_round_trip_through_storage(self, tmp_path):
+        """Promotion output is written to and read back from HDF5 unchanged."""
+        from core import storage
+        from core.models import ExperimentResult
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        promoted = _parse_and_validate_result(
+            _json.dumps(
+                {
+                    "status": "success",
+                    "results": {"fit": 1.0, "trace": {"type": "array", "value": [1.0, 2.0]}},
+                    "data": {
+                        "signal": {"type": "array", "value": [3.0, 4.0, 5.0]},
+                        "scalar": {"type": "scalar", "value": 9.0},
+                    },
+                }
+            )
+        )
+        assert promoted["arrays"] == {
+            "trace": [1.0, 2.0],
+            "signal": [3.0, 4.0, 5.0],
+        }
+
+        result = ExperimentResult(
+            id="20260727_000000_round_trip",
+            type="round_trip",
+            timestamp="2026-07-27T00:00:00Z",
+            status="success",
+            arrays=promoted["arrays"],
+        )
+        storage.save_experiment(result, tmp_path)
+
+        loaded = storage.load_experiment(result.id, tmp_path)
+        assert loaded is not None
+        assert loaded.arrays == promoted["arrays"]
+
+
+class TestOnlyPersistableArraysArePromoted:
+    """A list is not enough: storage must be able to write and read it back.
+
+    core/storage.py calls np.array() on write and slices with [:] on read, so
+    a ragged list raises from numpy and string, object or None-bearing lists
+    raise from h5py. Promoting them would turn a good run into a save failure.
+    """
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [[1, 2], [3]],
+            ["a", "b"],
+            [{"a": 1}],
+            [1, "a"],
+            [None, 1],
+        ],
+        ids=["ragged", "strings", "dicts", "mixed", "with_none"],
+    )
+    def test_unwritable_lists_are_not_promoted(self, value):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"candidate": {"type": "array", "value": value}},
+            }
+        )
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [[1, 2], [3]],
+            ["a", "b"],
+            [{"a": 1}],
+        ],
+        ids=["ragged", "strings", "dicts"],
+    )
+    def test_unwritable_top_level_arrays_are_dropped(self, value):
+        promoted = self._promote({"status": "success", "arrays": {"bad": value}})
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [1.0, 2.0],
+            [1, 2, 3],
+            [[1, 2], [3, 4]],
+            [True, False],
+            [],
+        ],
+        ids=["floats", "ints", "nested_rectangular", "bools", "empty"],
+    )
+    def test_writable_lists_are_still_promoted(self, value):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"good": {"type": "array", "value": value}},
+            }
+        )
+        assert promoted["arrays"] == {"good": value}
+
+    @pytest.mark.parametrize(
+        "value",
+        [
+            [1.0, 2.0],
+            [[1, 2], [3, 4]],
+            [True, False],
+            [],
+        ],
+        ids=["floats", "nested_rectangular", "bools", "empty"],
+    )
+    def test_every_promoted_shape_survives_storage(self, value, tmp_path):
+        """The promotion filter is verified against the real storage path."""
+        from core import storage
+        from core.models import ExperimentResult
+
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"good": {"type": "array", "value": value}},
+            }
+        )
+        assert promoted["arrays"] == {"good": value}
+
+        result = ExperimentResult(
+            id="20260727_000000_shapes",
+            type="shapes",
+            timestamp="2026-07-27T00:00:00Z",
+            status="success",
+            arrays=promoted["arrays"],
+        )
+        storage.save_experiment(result, tmp_path)
+        loaded = storage.load_experiment(result.id, tmp_path)
+
+        assert loaded is not None
+        assert loaded.arrays == {"good": value}
+
+
+class TestArrayNamesMustBePersistable:
+    """A promoted name becomes an HDF5 dataset name, so it must be usable.
+
+    The value was validated but the key was not: an
+    empty name is invalid, "." and ".." address existing groups rather than a
+    new dataset, and a name containing "/" silently creates intermediate
+    groups that load_experiment then tries to slice as a dataset.
+    """
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    @pytest.mark.parametrize(
+        "name", ["", ".", "..", "/", "a/b", "nested/deep/name"]
+    )
+    def test_unusable_names_are_not_promoted(self, name):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {name: {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize("name", ["", ".", "a/b"])
+    def test_unusable_names_in_top_level_arrays_are_dropped(self, name):
+        promoted = self._promote({"status": "success", "arrays": {name: [1, 2]}})
+        assert promoted["arrays"] == {}
+
+    def test_usable_names_still_promote(self):
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {"signal_1": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"signal_1": [1, 2]}
+
+    def test_promoted_name_survives_storage(self, tmp_path):
+        """Verified against the real write, not against an assumption."""
+        from core import storage
+        from core.models import ExperimentResult
+
+        promoted = self._promote(
+            {
+                "status": "success",
+                "arrays": {"bad/name": [9, 9]},
+                "data": {"good_name": {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {"good_name": [1, 2]}
+
+        result = ExperimentResult(
+            id="20260727_000000_names",
+            type="names",
+            timestamp="2026-07-27T00:00:00Z",
+            status="success",
+            arrays=promoted["arrays"],
+        )
+        storage.save_experiment(result, tmp_path)
+        loaded = storage.load_experiment(result.id, tmp_path)
+
+        assert loaded is not None
+        assert loaded.arrays == {"good_name": [1, 2]}
+
+
+class TestResultContainersAreNormalised:
+    """`results` and `data` collapse into one container before persistence.
+
+    The documented script return format has no `results` key; scalars and
+    tagged arrays go under `data`, and `results` is the stored field name that
+    the persistence paths tolerate as an alias. Because only one container is
+    ever read downstream while arrays were gathered from both, the stored
+    scalars and the stored arrays could describe different subsets of one run.
+    """
+
+    @staticmethod
+    def _parse(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    @staticmethod
+    def _downstream(result):
+        """What the CLI and lab persistence paths read."""
+        container = result.get("results") or result.get("data", {})
+        return container if isinstance(container, dict) else {}
+
+    def test_scalars_and_arrays_come_from_the_same_container(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "results": {"fit": 1.0},
+                "data": {"signal": {"type": "array", "value": [1, 2, 3]}},
+            }
+        )
+        stored = self._downstream(parsed)
+
+        assert stored["fit"] == 1.0
+        assert "signal" in stored
+        assert parsed["arrays"] == {"signal": [1, 2, 3]}
+
+    def test_documented_data_only_form_is_unchanged(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "data": {
+                    "t1": {"type": "scalar", "value": 42.0},
+                    "signal": {"type": "array", "value": [1, 2]},
+                },
+            }
+        )
+        stored = self._downstream(parsed)
+
+        assert set(stored) == {"t1", "signal"}
+        assert parsed["arrays"] == {"signal": [1, 2]}
+
+    def test_results_wins_a_name_collision(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "results": {"x": {"type": "array", "value": [1]}},
+                "data": {"x": {"type": "array", "value": [9]}},
+            }
+        )
+        assert parsed["arrays"] == {"x": [1]}
+        assert self._downstream(parsed)["x"]["value"] == [1]
+
+    def test_non_dict_results_does_not_shadow_data(self):
+        parsed = self._parse(
+            {
+                "status": "success",
+                "results": ["not a mapping"],
+                "data": {"signal": {"type": "array", "value": [7]}},
+            }
+        )
+        assert self._downstream(parsed) == {
+            "signal": {"type": "array", "value": [7]}
+        }
+        assert parsed["arrays"] == {"signal": [7]}
+
+
+class TestArrayConversionIsLossless:
+    """A numeric dtype is not proof the conversion preserved the value."""
+
+    @staticmethod
+    def _promote(result):
+        from core.runner import _parse_and_validate_result
+        import json as _json
+
+        return _parse_and_validate_result(_json.dumps(result))
+
+    def test_integer_beyond_float_mantissa_is_rejected(self):
+        """Mixing a large int with a float silently rounds it to float64."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {
+                    "lossy": {
+                        "type": "array",
+                        "value": [9007199254740993, 0.5],
+                    }
+                },
+            }
+        )
+        assert promoted["arrays"] == {}
+
+    @pytest.mark.parametrize(
+        "value",
+        [[1, 2, 3], [1.0, 2.5], [[1, 2], [3, 4]], [True, False], [9007199254740993]],
+        ids=["ints", "floats", "nested", "bools", "big_int_alone"],
+    )
+    def test_lossless_values_are_still_promoted(self, value):
+        promoted = self._promote(
+            {"status": "success", "data": {"ok": {"type": "array", "value": value}}}
+        )
+        assert promoted["arrays"] == {"ok": value}
+
+    @pytest.mark.parametrize("name", ["bad\ud800name", "\udfff"])
+    def test_names_that_cannot_be_encoded_are_rejected(self, name):
+        """h5py encodes the name as UTF-8; a lone surrogate raises there."""
+        promoted = self._promote(
+            {
+                "status": "success",
+                "data": {name: {"type": "array", "value": [1, 2]}},
+            }
+        )
+        assert promoted["arrays"] == {}

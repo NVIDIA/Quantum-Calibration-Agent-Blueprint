@@ -522,6 +522,18 @@ def get_array_stats(
 
         data = f["arrays"][array_name][:]
 
+        # An empty array is a legitimate result, but the reductions below
+        # raise on zero-size input. Report the count with no statistics
+        # rather than failing the query.
+        if data.size == 0:
+            return {
+                "min": None,
+                "max": None,
+                "mean": None,
+                "std": None,
+                "count": 0,
+            }
+
         return {
             "min": float(np.min(data)),
             "max": float(np.max(data)),
