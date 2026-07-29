@@ -20,6 +20,8 @@ import subprocess
 from copy import deepcopy
 from pathlib import Path
 
+import numpy as np
+
 from .discovery import get_experiment_schema
 from .models import ExperimentSchema, ParameterSpec
 
@@ -320,7 +322,132 @@ def _parse_and_validate_result(stdout: str) -> dict:
     if result["status"] == "failed" and "error" not in result:
         raise RuntimeError("Failed experiment must include 'error' field")
 
+    _normalise_result_containers(result)
+    result["arrays"] = _collect_arrays(result)
+
     return result
+
+
+def _normalise_result_containers(result: dict) -> None:
+    """Collapse `results` and `data` into one canonical container.
+
+    The documented script return format has no `results` key: a script reports
+    its scalars and tagged arrays under `data`. `results` is the name of the
+    stored field, and the persistence paths tolerate a script that uses it by
+    reading `results` or falling back to `data` — so only one of the two is
+    ever consumed downstream.
+
+    That made it possible for the stored scalars and the stored arrays to
+    describe different subsets of one run: arrays were gathered from both
+    containers while everything else came from whichever container was picked.
+    Merging them here means every consumer sees the same single container.
+    `results` wins a name collision, matching the precedence the persistence
+    paths already apply.
+    """
+    from_results = result.get("results")
+    from_data = result.get("data")
+    if not isinstance(from_results, dict) and not isinstance(from_data, dict):
+        return
+
+    canonical = {}
+    if isinstance(from_data, dict):
+        canonical.update(from_data)
+    if isinstance(from_results, dict):
+        canonical.update(from_results)
+    result["results"] = canonical
+
+
+def _collect_arrays(result: dict) -> dict:
+    """Gather every persistable array from a result into one mapping.
+
+    Scripts return arrays nested under `results`/`data` tagged `type:"array"`,
+    and may also supply a top-level `arrays` mapping of raw values. Nothing
+    else extracts the tagged form, so without this the queryable HDF5 `arrays`
+    group would stay empty for those scripts.
+
+    Precedence is the top-level `arrays` mapping, then `results`, then `data`,
+    and the first writer of a name wins. Anything already present is therefore
+    preserved rather than replaced, while names it does not define are still
+    added. Entries that storage could not write are skipped rather than
+    raising, since a malformed array should not fail an otherwise good run.
+    """
+    collected: dict = {}
+
+    # Raw values, already in the shape storage expects.
+    existing = result.get("arrays")
+    if isinstance(existing, dict):
+        for key, value in existing.items():
+            if _is_persistable_name(key) and _is_persistable_array(value):
+                collected[key] = value
+
+    # Tagged values, which need unwrapping.
+    for container_name in ("results", "data"):
+        container = result.get(container_name)
+        if not isinstance(container, dict):
+            continue
+        for key, value in container.items():
+            if key in collected or not _is_persistable_name(key):
+                continue
+            if isinstance(value, dict) and value.get("type") == "array":
+                candidate = value.get("value")
+                if _is_persistable_array(candidate):
+                    collected[key] = candidate
+
+    return collected
+
+
+def _is_persistable_name(name: any) -> bool:
+    """Report whether storage could use this name as an HDF5 dataset name.
+
+    Names become dataset names directly. An empty name is not a valid one,
+    "." and ".." address the current and parent group rather than a new
+    dataset, and a name containing "/" creates intermediate groups, which
+    load_experiment then tries to slice as if it were a dataset.
+    """
+    if not isinstance(name, str) or not name:
+        return False
+    if "/" in name or "\x00" in name:
+        return False
+    if name in (".", ".."):
+        return False
+    # h5py encodes the name as UTF-8. A lone surrogate survives JSON transport
+    # but cannot be encoded, so it would raise only at save time.
+    try:
+        name.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
+
+
+def _is_persistable_array(value: any) -> bool:
+    """Report whether storage could write this value and read it back.
+
+    Being a list is not sufficient. core/storage.py builds the dataset with
+    np.array() and reads it back by slicing with [:], so a ragged list raises
+    from numpy and a list of strings, mappings or None raises from h5py for
+    want of a native dtype. Mirroring the real write here keeps a malformed
+    array from turning an otherwise successful run into a save failure.
+    """
+    if not isinstance(value, list):
+        return False
+
+    try:
+        array = np.asarray(value)
+    except (ValueError, TypeError):
+        # Ragged nesting cannot become a rectangular array.
+        return False
+
+    if not (
+        np.issubdtype(array.dtype, np.number)
+        or np.issubdtype(array.dtype, np.bool_)
+    ):
+        return False
+
+    # The dtype alone does not prove the conversion kept the value. Mixing an
+    # integer too large for a float mantissa with a float yields a float64
+    # array that silently rounds it, so what is read back from storage would
+    # differ from what the experiment reported.
+    return array.tolist() == value
 
 
 def _check_type(value: any, type_name: str) -> bool:
