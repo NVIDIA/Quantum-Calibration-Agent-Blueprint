@@ -18,7 +18,8 @@
 import pytest
 import subprocess
 from unittest.mock import patch, MagicMock
-from core.runner import run_experiment, validate_params, _check_type
+from core.runner import resolve_params, run_experiment, validate_params, _check_type
+from core.discovery import get_experiment_schema
 from core.models import ExperimentSchema, ParameterSpec
 
 
@@ -79,6 +80,18 @@ class TestValidateParams:
         )
         assert errors == []
 
+    def test_literal_none_default_is_valid(self, sample_schema):
+        sample_schema.parameters.append(
+            ParameterSpec(
+                name="optional", type="str", required=False, default=None
+            )
+        )
+
+        params = resolve_params({"freq": 5.0}, sample_schema)
+
+        assert params["optional"] is None
+        assert validate_params(params, sample_schema) == []
+
     def test_range_boundary_values(self, sample_schema):
         """Test boundary values for range validation."""
         # Min boundary
@@ -132,6 +145,10 @@ class TestCheckType:
         assert _check_type((1, 2, 3), "list") is False
         assert _check_type([], "list") is True
 
+    def test_dict_type(self):
+        assert _check_type({"key": "value"}, "dict") is True
+        assert _check_type([], "dict") is False
+
     def test_unknown_type(self):
         """Unknown type returns False."""
         assert _check_type("value", "unknown_type") is False
@@ -158,6 +175,48 @@ class TestRunExperiment:
         assert result["status"] == "success"
         assert "data" in result
         assert result["data"]["result"] == 10.0  # param1 * 2
+
+    def test_successful_run_uses_default_params(self, temp_scripts_dir):
+        """Omitted optional parameters are applied by the experiment."""
+        result = run_experiment("test_experiment", {}, temp_scripts_dir)
+
+        assert result["status"] == "success"
+        assert result["data"]["result"] == 10.0
+
+    def test_runtime_defaults_are_preserved_and_reported(self, temp_scripts_dir):
+        """Defaults that AST discovery cannot evaluate retain Python semantics."""
+        dynamic_script = temp_scripts_dir / "dynamic_defaults.py"
+        dynamic_script.write_text(
+            '''
+DEFAULT_POINTS = 7
+
+def _make_scale():
+    return 3
+
+def dynamic_defaults(
+    points: int = DEFAULT_POINTS,
+    options: dict = {"offset": 2},
+    scale: int = _make_scale(),
+) -> dict:
+    result = points * scale + options["offset"]
+    options["offset"] = 99
+    return {
+        "status": "success",
+        "data": {"result": result},
+    }
+'''
+        )
+
+        schema = get_experiment_schema("dynamic_defaults", temp_scripts_dir)
+        params_by_name = {param.name: param for param in schema.parameters}
+
+        assert params_by_name["points"].default_resolved is False
+        assert params_by_name["scale"].default_resolved is False
+        assert params_by_name["options"].default_resolved is True
+        assert resolve_params({}, schema) == {"options": {"offset": 2}}
+
+        result = run_experiment("dynamic_defaults", {}, temp_scripts_dir)
+        assert result["data"]["result"] == 23
 
     def test_subprocess_timeout(self, temp_scripts_dir):
         """Test subprocess timeout handling."""
@@ -900,3 +959,106 @@ class TestArrayConversionIsLossless:
             }
         )
         assert promoted["arrays"] == {}
+
+
+class TestRangeChecksRejectNonFinite:
+    """A range check must reject NaN, which compares false against everything.
+    Rewriting the chained
+    comparison as two one-sided checks let NaN satisfy both sides.
+    """
+    @staticmethod
+    def _schema(rng):
+        return ExperimentSchema(
+            name="e",
+            description="",
+            module_path="/tmp/e.py",
+            parameters=[
+                ParameterSpec(name="x", type="float", required=True, range=rng)
+            ],
+        )
+    @pytest.mark.parametrize("rng", [(0.0, 10.0), (0.0, None), (None, 10.0)])
+    def test_nan_is_rejected(self, rng):
+        errors = validate_params({"x": float("nan")}, self._schema(rng))
+        assert errors != []
+    @pytest.mark.parametrize(
+        "rng,value,expected_ok",
+        [
+            ((0.0, 10.0), 5.0, True),
+            ((0.0, 10.0), -1.0, False),
+            ((0.0, 10.0), 11.0, False),
+            ((0.0, None), 1e6, True),
+            ((0.0, None), -1.0, False),
+            ((None, 10.0), -1e6, True),
+            ((None, 10.0), 11.0, False),
+        ],
+    )
+    def test_open_and_closed_bounds(self, rng, value, expected_ok):
+        errors = validate_params({"x": value}, self._schema(rng))
+        assert (errors == []) is expected_ok
+class TestDefaultsAreOnlyInjectedWhenAcceptable:
+    """A resolved default must not be injected if validation would reject it.
+    Discovery records an annotation name verbatim when it is not in its type
+    map, so `Dict[str, int]` becomes "Dict" and `_check_type` does not know it.
+    Injecting the default then fails validation and aborts a run that worked
+    before, when the parameter was simply omitted and Python applied the
+    default itself.
+    """
+    @pytest.fixture
+    def generic_annotation_scripts(self, tmp_path):
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "__init__.py").write_text("")
+        (scripts_dir / "generics.py").write_text(
+            '''
+from typing import Annotated, Dict, List
+def generics(
+    options: Dict[str, int] = {"a": 1},
+    tags: List[str] = ["x"],
+    scale: Annotated[float, (0.0, 10.0)] = 1.0,
+    plain: float = 2.0,
+) -> dict:
+    """Experiment using annotations discovery cannot map."""
+    return {"status": "success", "data": {}}
+'''
+        )
+        return scripts_dir
+    def test_unmappable_annotations_are_not_injected(
+        self, generic_annotation_scripts
+    ):
+        """Only defaults whose type can actually be checked are injected."""
+        schema = get_experiment_schema("generics", generic_annotation_scripts)
+        assert schema is not None
+        effective = resolve_params({}, schema)
+        assert effective == {"scale": 1.0, "plain": 2.0}
+    def test_resulting_params_validate(self, generic_annotation_scripts):
+        """The whole point: what is injected must pass validation."""
+        schema = get_experiment_schema("generics", generic_annotation_scripts)
+        assert schema is not None
+        assert validate_params(resolve_params({}, schema), schema) == []
+    def test_explicit_override_still_wins(self, generic_annotation_scripts):
+        """Not injecting a default must not block passing one explicitly."""
+        schema = get_experiment_schema("generics", generic_annotation_scripts)
+        assert schema is not None
+        effective = resolve_params({"options": {"b": 2}}, schema)
+        assert effective["options"] == {"b": 2}
+    def test_out_of_range_default_is_not_injected(self, tmp_path):
+        """A default outside its own declared range is the same failure mode."""
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "__init__.py").write_text("")
+        (scripts_dir / "oor.py").write_text(
+            '''
+from typing import Annotated
+def oor(
+    amplitude: Annotated[float, (0.0, 1.0)] = 5.0,
+    good: Annotated[float, (0.0, 10.0)] = 1.0,
+) -> dict:
+    """Experiment whose default falls outside its own range."""
+    return {"status": "success", "data": {}}
+'''
+        )
+        schema = get_experiment_schema("oor", scripts_dir)
+        assert schema is not None
+        effective = resolve_params({}, schema)
+        assert effective == {"good": 1.0}
+        assert validate_params(effective, schema) == []

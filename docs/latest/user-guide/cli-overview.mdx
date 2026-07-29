@@ -142,6 +142,9 @@ qca experiments validate /path/to/script.py --human
 Run an experiment and store results.
 
 ```bash
+# Run with the experiment's default parameters
+qca experiments run t1_measurement
+
 # Run with parameters as JSON
 qca experiments run qubit_spectroscopy \
   --params '{"center_freq": 4.8, "span": 0.2, "num_points": 101, "drive_amplitude": 0.1, "num_averages": 1000}'
@@ -163,7 +166,7 @@ qca experiments run qubit_spectroscopy \
 ```
 
 **Options:**
-- `--params`, `-p`: Parameters as JSON string (required)
+- `--params`, `-p`: Optional parameter overrides as a JSON string (default: `{}`)
 - `--timeout`: Timeout in seconds (default: 300)
 - `--notes`: User notes for this run
 - `--human`, `-h`: Human-readable output

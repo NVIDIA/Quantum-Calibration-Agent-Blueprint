@@ -206,7 +206,7 @@ def _run_experiment(
     if params is None:
         params = {}
 
-    # Validate experiment exists
+    # Validate experiment exists and resolve defaults safe to pass over JSON.
     schema = discovery.get_experiment_schema(experiment_name, SCRIPTS_DIR)
     if not schema:
         available = discovery.discover_experiments(SCRIPTS_DIR)
@@ -214,6 +214,7 @@ def _run_experiment(
             "error": f"Experiment '{experiment_name}' not found",
             "available_experiments": [e.name for e in available],
         }
+    params = runner.resolve_params(params, schema)
 
     # Generate experiment ID and timestamp BEFORE running
     # This allows real-time log file access during execution

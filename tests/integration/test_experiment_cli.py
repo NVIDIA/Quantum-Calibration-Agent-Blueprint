@@ -49,6 +49,33 @@ class TestExperimentsRunCommand:
         output = json.loads(result.stdout)
         assert output["status"] == "success"
 
+    def test_run_without_params_uses_and_persists_defaults(
+        self, temp_scripts_dir, temp_data_dir
+    ):
+        """README-style invocation should use and record effective defaults."""
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(CLI_PATH),
+                "experiments",
+                "run",
+                "test_experiment",
+            ],
+            capture_output=True,
+            text=True,
+            env={
+                **subprocess.os.environ,
+                "QCAL_SCRIPTS_DIR": str(temp_scripts_dir),
+                "QCAL_DATA_DIR": str(temp_data_dir),
+            },
+        )
+
+        assert result.returncode == 0, f"CLI failed: {result.stderr}"
+        output = json.loads(result.stdout)
+        assert output["status"] == "success"
+        assert output["params"] == {"param1": 5.0}
+        assert output["results"]["result"] == 10.0
+
     def test_run_preserves_results(self, temp_scripts_dir, temp_data_dir):
         """Results from experiment 'data' field should be saved, not discarded."""
         result = subprocess.run(

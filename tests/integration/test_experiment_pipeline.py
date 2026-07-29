@@ -78,7 +78,7 @@ class TestExperimentPipeline:
 
                 # 3. Run experiment
                 run_result = run_exp_tool.invoke(
-                    {"experiment_name": exp_name, "params": {"param1": 5.0}}
+                    {"experiment_name": exp_name}
                 )
                 assert run_result["status"] == "success"
                 exp_id = run_result["id"]
@@ -92,3 +92,4 @@ class TestExperimentPipeline:
                     {"action": "history_show", "experiment_id": exp_id}
                 )
                 assert details["id"] == exp_id
+                assert details["params"] == {"param1": 5.0}

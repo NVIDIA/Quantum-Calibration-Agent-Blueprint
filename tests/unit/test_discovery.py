@@ -15,15 +15,24 @@
 
 """Unit tests for core/discovery.py."""
 
+import ast
+import json
+
 import pytest
 from pathlib import Path
 from core.discovery import (
     discover_experiments,
     get_experiment_schema,
     validate_script,
+    _eval_default,
     _extract_schema_from_file,
     _parse_function_parameters,
 )
+
+
+def _default_of(expression: str):
+    """Evaluate a default expression the way discovery sees it in a signature."""
+    return _eval_default(ast.parse(expression, mode="eval").body)
 
 
 class TestDiscoverExperiments:
@@ -334,3 +343,195 @@ def experiment(x: Annotated[float, (0.0, 10.0)] = 1.0) -> dict:
         result = validate_script(script)
         assert result["valid"] is True
         assert any("docstring" in str(w).lower() for w in result["warnings"])
+
+
+NON_FINITE_DEFAULTS = [
+    "1e1000",
+    "-1e1000",
+    "[1e1000, 2]",
+    "{'a': 1e1000}",
+    "[[1e1000]]",
+    "{'a': {'b': -1e1000}}",
+]
+
+
+class TestEvalDefault:
+    """Tests for _eval_default, which decides whether a default is portable JSON."""
+
+    @pytest.mark.parametrize(
+        "expression,expected",
+        [
+            ("1.5", 1.5),
+            ("1", 1),
+            ("True", True),
+            ("'x'", "x"),
+            ("[1, 2]", [1, 2]),
+            ("{'a': 1}", {"a": 1}),
+            ("None", None),
+        ],
+    )
+    def test_portable_defaults_resolve(self, expression, expected):
+        """Values that survive JSON unchanged are resolved."""
+        resolved, value = _default_of(expression)
+        assert resolved is True
+        assert value == expected
+
+    def test_bool_is_not_collapsed_to_int(self):
+        """A bool default stays a bool rather than becoming 1."""
+        _, true_value = _default_of("True")
+        _, one_value = _default_of("1")
+        assert isinstance(true_value, bool)
+        assert isinstance(one_value, bool) is False
+
+    @pytest.mark.parametrize("expression", NON_FINITE_DEFAULTS)
+    def test_non_finite_defaults_are_unresolved(self, expression):
+        """Infinity and NaN are not standard JSON, so they must not resolve.
+
+        json.dumps emits the bare token Infinity by default, which strict
+        parsers and non-Python consumers reject.
+        """
+        assert _default_of(expression) == (False, None)
+
+    def test_nan_default_is_unresolved(self):
+        """NaN never compares equal to itself, but must be rejected explicitly."""
+        assert _default_of("float('nan')") == (False, None)
+
+    @pytest.mark.parametrize(
+        "expression",
+        [
+            "(1, 2)",
+            "{1: 'a'}",
+            "{None: 'a'}",
+        ],
+    )
+    def test_round_trip_rejections_are_retained(self, expression):
+        """Tuple coercion and non-string dict keys must still be rejected.
+
+        Strict encoding alone does not catch these: a tuple round-trips to a
+        list and an int key round-trips to a string key. Only comparing the
+        decoded value against the original catches them.
+        """
+        assert _default_of(expression) == (False, None)
+
+
+class TestNonFinitePersistence:
+    """Non-finite defaults must not escape into any JSON surface."""
+
+    @pytest.fixture
+    def non_finite_scripts_dir(self, tmp_path):
+        """Experiment whose signature carries non-finite and unportable defaults."""
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "__init__.py").write_text("")
+        (scripts_dir / "edge_defaults.py").write_text(
+            '''
+from typing import Annotated
+
+def edge_defaults(
+    finite: Annotated[float, (0.0, 10.0)] = 5.0,
+    positive_infinity: float = 1e1000,
+    negative_infinity: float = -1e1000,
+    nested_infinity: list = [1e1000, 2],
+    mapped_infinity: dict = {"a": 1e1000},
+) -> dict:
+    """Experiment with defaults that are not portable JSON."""
+    return {"status": "success", "data": {"result": finite}}
+'''
+        )
+        return scripts_dir
+
+    def test_non_finite_defaults_are_not_resolved(self, non_finite_scripts_dir):
+        """Discovery marks every non-finite default unresolved."""
+        schema = get_experiment_schema("edge_defaults", non_finite_scripts_dir)
+        assert schema is not None
+        by_name = {p.name: p for p in schema.parameters}
+
+        assert by_name["finite"].default_resolved is True
+        assert by_name["finite"].default == 5.0
+
+        for name in (
+            "positive_infinity",
+            "negative_infinity",
+            "nested_infinity",
+            "mapped_infinity",
+        ):
+            assert by_name[name].default_resolved is False, name
+            assert by_name[name].default is None, name
+
+    def test_schema_encodes_under_strict_json(self, non_finite_scripts_dir):
+        """The schema the CLI prints must be parseable by a strict JSON reader."""
+        schema = get_experiment_schema("edge_defaults", non_finite_scripts_dir)
+        assert schema is not None
+
+        encoded = json.dumps(schema.to_dict(), allow_nan=False)
+        assert "Infinity" not in encoded
+        assert "NaN" not in encoded
+        # A strict reader rejects the non-standard tokens outright.
+        json.loads(encoded, parse_constant=_reject_constant)
+
+    def test_non_finite_annotated_bound_becomes_open(self, tmp_path):
+        """A range bound also reaches schema JSON, so it must be finite too.
+
+        Fixing the defaults left Annotated ranges able to
+        carry infinity into the same output. The non-finite bound becomes
+        None, meaning open on that side, so the bound that was finite keeps
+        being enforced.
+        """
+        scripts_dir = tmp_path / "scripts"
+        scripts_dir.mkdir()
+        (scripts_dir / "__init__.py").write_text("")
+        (scripts_dir / "bad_range.py").write_text(
+            '''
+from typing import Annotated
+
+def bad_range(
+    unbounded: Annotated[float, (0.0, 1e1000)] = 1.0,
+    bounded: Annotated[float, (0.0, 10.0)] = 1.0,
+) -> dict:
+    """Experiment with an unbounded range."""
+    return {"status": "success", "data": {}}
+'''
+        )
+        schema = get_experiment_schema("bad_range", scripts_dir)
+        assert schema is not None
+        by_name = {p.name: p for p in schema.parameters}
+
+        assert by_name["unbounded"].range == (0.0, None)
+        assert by_name["bounded"].range == (0.0, 10.0)
+
+        encoded = json.dumps(schema.to_dict(), allow_nan=False)
+        assert "Infinity" not in encoded
+
+        # The finite bound is still enforced; only the open side is skipped.
+        from core.runner import validate_params
+
+        assert validate_params({"unbounded": -5.0}, schema) != []
+        assert validate_params({"unbounded": 1e6}, schema) == []
+
+    def test_validate_script_output_encodes_under_strict_json(
+        self, non_finite_scripts_dir
+    ):
+        """validate_script embeds the schema, so it needs the same guarantee."""
+        result = validate_script(non_finite_scripts_dir / "edge_defaults.py")
+
+        assert result["valid"] is True
+        encoded = json.dumps(result, allow_nan=False)
+        assert "Infinity" not in encoded
+        json.loads(encoded, parse_constant=_reject_constant)
+
+    def test_unresolved_defaults_are_omitted_from_effective_params(
+        self, non_finite_scripts_dir
+    ):
+        """Unresolved defaults are left out so Python applies the real value."""
+        from core.runner import resolve_params
+
+        schema = get_experiment_schema("edge_defaults", non_finite_scripts_dir)
+        assert schema is not None
+
+        effective = resolve_params({}, schema)
+        assert effective == {"finite": 5.0}
+        json.dumps(effective, allow_nan=False)
+
+
+def _reject_constant(name):
+    raise AssertionError(f"non-standard JSON constant present: {name}")

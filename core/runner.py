@@ -17,13 +17,79 @@
 
 import json
 import subprocess
+from copy import deepcopy
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
 from .discovery import get_experiment_schema
 from .models import ExperimentSchema, ParameterSpec
+
+
+def resolve_params(params: dict, schema: ExperimentSchema) -> dict:
+    """Merge parameter overrides with defaults discovery safely resolved.
+
+    A default is only carried over when validation would accept it. Discovery
+    records an annotation name verbatim when it is not one of the few it maps,
+    so a signature like `Dict[str, int]` yields the type name "Dict", which
+    _check_type does not recognise. Injecting such a default would fail
+    validation and abort a run that previously worked, because the parameter
+    used to be omitted and Python applied the declared default itself. Leaving
+    it out preserves that behaviour.
+    """
+    effective_params = {
+        param.name: deepcopy(param.default)
+        for param in schema.parameters
+        if not param.required
+        and param.default_resolved
+        and not _check_value(param, param.default)
+    }
+    effective_params.update(params)
+    return effective_params
+
+
+def _check_value(spec: ParameterSpec, value: any) -> list[str]:
+    """Return the validation errors for one parameter value.
+
+    Shared by validate_params and resolve_params so that the rules deciding
+    whether a value is acceptable live in exactly one place.
+    """
+    errors = []
+
+    if (
+        value is None
+        and not spec.required
+        and spec.default_resolved
+        and spec.default is None
+    ):
+        return errors
+
+    # Check type (strict, no coercion)
+    if not _check_type(value, spec.type):
+        errors.append(
+            f"Parameter {spec.name} has wrong type. "
+            f"Expected {spec.type}, got {type(value).__name__}"
+        )
+        return errors
+
+    # Check range for numeric types
+    if spec.range and spec.type in ("int", "float"):
+        min_val, max_val = spec.range
+        # An open bound is recorded as None, because the infinity that would
+        # otherwise express it is not portable JSON.
+        #
+        # Each side is negated rather than compared directly so that NaN,
+        # which returns false for every comparison, still fails the check
+        # instead of silently satisfying both sides.
+        below = min_val is not None and not (value >= min_val)
+        above = max_val is not None and not (value <= max_val)
+        if below or above:
+            errors.append(
+                f"Parameter {spec.name} out of range. "
+                f"Expected [{min_val}, {max_val}], got {value}"
+            )
+
+    return errors
 
 
 def validate_params(params: dict, schema: ExperimentSchema) -> list[str]:
@@ -53,24 +119,7 @@ def validate_params(params: dict, schema: ExperimentSchema) -> list[str]:
             errors.append(f"Unknown parameter: {param_name}")
             continue
 
-        spec = param_specs[param_name]
-
-        # Check type (strict, no coercion)
-        if not _check_type(param_value, spec.type):
-            errors.append(
-                f"Parameter {param_name} has wrong type. "
-                f"Expected {spec.type}, got {type(param_value).__name__}"
-            )
-            continue
-
-        # Check range for numeric types
-        if spec.range and spec.type in ("int", "float"):
-            min_val, max_val = spec.range
-            if not (min_val <= param_value <= max_val):
-                errors.append(
-                    f"Parameter {param_name} out of range. "
-                    f"Expected [{min_val}, {max_val}], got {param_value}"
-                )
+        errors.extend(_check_value(param_specs[param_name], param_value))
 
     return errors
 
@@ -106,7 +155,10 @@ def run_experiment(
     if schema is None:
         raise ValueError(f"Experiment not found: {name}")
 
-    # Validate parameters
+    # Resolve only defaults that discovery can safely carry over JSON. Dynamic
+    # defaults remain omitted so Python applies their real declared values.
+    params = resolve_params(params, schema)
+
     validation_errors = validate_params(params, schema)
     if validation_errors:
         raise ValueError(f"Parameter validation failed: {'; '.join(validation_errors)}")
@@ -414,6 +466,7 @@ def _check_type(value: any, type_name: str) -> bool:
         "str": str,
         "bool": bool,
         "list": list,
+        "dict": dict,
     }
 
     expected_type = type_map.get(type_name)
