@@ -44,6 +44,7 @@ from deepagents import create_deep_agent
 from deepagents.backends.local_shell import LocalShellBackend
 
 from core import storage, discovery
+from core.workflow_validation import get_workflow_nodes
 from prompt import load_system_prompt
 
 # Load environment
@@ -1139,16 +1140,28 @@ async def get_experiment_script(name: str):
 WORKFLOWS_DIR = ROOT_DIR / "data" / "workflows"
 
 
-def _load_workflow(workflow_id: str) -> dict | None:
-    """Load workflow.json for a workflow."""
-    workflow_dir = WORKFLOWS_DIR / workflow_id
-    workflow_file = workflow_dir / "workflow.json"
+WORKFLOW_NOT_FOUND = "workflow-not-found"
+
+
+def _load_workflow(workflow_id: str) -> tuple[Any, str | None]:
+    """Load workflow.json for a workflow, returning (data, error).
+
+    `data` is whatever the file parsed to, which may legitimately be any JSON
+    value including None. Callers must therefore branch on `error` rather than
+    on the value of `data`: returning None alone cannot distinguish an absent
+    file from a file holding the literal `null`, and collapsing the two hides
+    malformed persisted data behind a not-found result.
+
+    `error` is WORKFLOW_NOT_FOUND when there is no file, a description when the
+    file could not be read or parsed, and None when `data` is trustworthy.
+    """
+    workflow_file = WORKFLOWS_DIR / workflow_id / "workflow.json"
     if not workflow_file.exists():
-        return None
+        return None, WORKFLOW_NOT_FOUND
     try:
-        return json.loads(workflow_file.read_text(encoding="utf-8"))
-    except Exception:
-        return None
+        return json.loads(workflow_file.read_text(encoding="utf-8")), None
+    except (OSError, ValueError) as exc:
+        return None, f"workflow.json could not be read: {exc}"
 
 
 def _is_process_running(workflow_id: str) -> bool:
@@ -1174,11 +1187,35 @@ def _is_process_running(workflow_id: str) -> bool:
 
 def _get_workflow_summary(workflow_id: str) -> dict | None:
     """Get workflow summary for list view."""
-    wf = _load_workflow(workflow_id)
-    if not wf:
+    wf, load_error = _load_workflow(workflow_id)
+    if load_error == WORKFLOW_NOT_FOUND:
         return None
 
-    nodes = wf.get("nodes", [])
+    # Anything else that parsed, including the literal null, is persisted data
+    # that exists and is malformed, so it is reported rather than omitted.
+    nodes_error = load_error
+    if not nodes_error:
+        nodes, nodes_error = get_workflow_nodes(wf)
+    if nodes_error:
+        return {
+            "workflow_id": workflow_id,
+            "name": (
+                wf.get("name", workflow_id)
+                if isinstance(wf, dict)
+                else workflow_id
+            ),
+            "status": "invalid",
+            "error": nodes_error,
+            # The list view's contract declares these, so they are reported as
+            # empty rather than omitted. Dropping them left the row rendering
+            # a blank progress section instead of saying the data is invalid.
+            "progress": "0/0",
+            "completed": 0,
+            "failed": 0,
+            "running": 0,
+            "total": 0,
+            "process_running": _is_process_running(workflow_id),
+        }
     completed = sum(1 for n in nodes if n.get("state") == "success")
     failed = sum(1 for n in nodes if n.get("state") == "failed")
     running = sum(1 for n in nodes if n.get("state") == "running")
@@ -1223,11 +1260,15 @@ async def list_workflows():
 @app.get("/workflows/{workflow_id}")
 async def get_workflow(workflow_id: str):
     """Get full workflow details."""
-    wf = _load_workflow(workflow_id)
-    if not wf:
+    wf, load_error = _load_workflow(workflow_id)
+    if load_error == WORKFLOW_NOT_FOUND:
         return {"error": f"Workflow '{workflow_id}' not found"}
 
-    nodes = wf.get("nodes", [])
+    nodes_error = load_error
+    if not nodes_error:
+        nodes, nodes_error = get_workflow_nodes(wf)
+    if nodes_error:
+        return {"error": "Invalid workflow data", "details": nodes_error}
     completed = sum(1 for n in nodes if n.get("state") == "success")
     failed = sum(1 for n in nodes if n.get("state") == "failed")
     skipped = sum(1 for n in nodes if n.get("state") == "skipped")

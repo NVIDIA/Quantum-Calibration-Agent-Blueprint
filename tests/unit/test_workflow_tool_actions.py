@@ -74,6 +74,18 @@ class TestListAction:
         assert result["workflows"][0]["workflow_id"] == "bad_wf"
         assert result["workflows"][0]["error"] == "Invalid JSON"
 
+    def test_non_object_node_is_reported_without_crashing(self):
+        wf_dir = self.workflows_dir / "bad_node"
+        wf_dir.mkdir()
+        (wf_dir / "workflow.json").write_text(
+            json.dumps({"id": "bad_node", "name": "Bad", "nodes": ["node"]})
+        )
+
+        result = workflow.func(action="list")
+
+        assert result["workflows"][0]["workflow_id"] == "bad_node"
+        assert "must be an object" in result["workflows"][0]["error"]
+
 
 # ---------------------------------------------------------------------------
 # validate action
@@ -314,6 +326,14 @@ class TestStatusAction:
         result = workflow.func(action="status", workflow_id="nope")
         assert "error" in result
         assert "not found" in result["error"].lower()
+
+    def test_non_object_node_is_reported_without_crashing(self):
+        self._write_workflow({"id": "bad_node", "name": "Bad", "nodes": [42]})
+
+        result = workflow.func(action="status", workflow_id="bad_node")
+
+        assert result["error"] == "Invalid workflow data"
+        assert "must be an object" in result["details"]
 
     def test_running_workflow(self, sample_workflow):
         self._write_workflow(sample_workflow)
@@ -639,3 +659,193 @@ class TestFormatStatus:
         assert node1["experiment_id"] == "20260404_120000_qubit_spectroscopy"
         node2 = next(n for n in result["nodes"] if n["id"] == "n2")
         assert node2["experiment_id"] is None
+
+
+# ---------------------------------------------------------------------------
+# Malformed persisted data must never raise
+# ---------------------------------------------------------------------------
+MALFORMED_DEPENDENCIES = [
+    ([[]], "list"),
+    ([{}], "dict"),
+    ([None], "NoneType"),
+    ([3], "int"),
+    ([""], "empty"),
+]
+
+
+class TestValidateDagMalformedDependencies:
+    """_validate_dag is imported directly by callers, so it needs its own guard."""
+
+    @pytest.mark.parametrize("dependencies,_label", MALFORMED_DEPENDENCIES)
+    def test_malformed_dependency_returns_error(self, dependencies, _label):
+        """A dependency that is not a non-empty string is a validation error.
+
+        Unhashable elements previously reached a set-membership test and
+        raised TypeError instead of returning a structured result.
+        """
+        nodes = [{"id": "a", "name": "A", "dependencies": dependencies}]
+        valid, msg = _validate_dag(nodes)
+        assert valid is False
+        assert "a" in msg
+
+    def test_non_list_dependencies_returns_error(self):
+        nodes = [{"id": "a", "name": "A", "dependencies": "b"}]
+        valid, msg = _validate_dag(nodes)
+        assert valid is False
+
+
+class TestValidateActionMalformedDependencies:
+    """The validate action must report malformed dependencies structurally."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_dir(self, tmp_path, monkeypatch):
+        self.workflows_dir = tmp_path / "workflows"
+        self.workflows_dir.mkdir()
+        monkeypatch.setattr("tools.workflow_tool.WORKFLOWS_DIR", self.workflows_dir)
+
+    def _write_workflow(self, data):
+        wf_dir = self.workflows_dir / data["id"]
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        (wf_dir / "workflow.json").write_text(json.dumps(data))
+
+    @pytest.mark.parametrize("dependencies,_label", MALFORMED_DEPENDENCIES)
+    def test_malformed_dependency_is_reported(self, dependencies, _label):
+        self._write_workflow(
+            {
+                "id": "bad_dep",
+                "name": "Bad dependency",
+                "nodes": [
+                    {"id": "n1", "name": "Node 1", "dependencies": dependencies}
+                ],
+            }
+        )
+        result = workflow.func(action="validate", workflow_id="bad_dep")
+        assert result["valid"] is False
+        assert any("n1" in str(e) for e in result["errors"])
+
+
+class TestUpdateRejectsNonMappingData:
+    """The update path must not apply changes to or from a non-mapping."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_dir(self, tmp_path, monkeypatch):
+        self.workflows_dir = tmp_path / "workflows"
+        self.workflows_dir.mkdir()
+        monkeypatch.setattr("tools.workflow_tool.WORKFLOWS_DIR", self.workflows_dir)
+
+    def test_existing_top_level_list_is_rejected(self):
+        """A persisted workflow that is a JSON list is a recoverable error."""
+        wf_dir = self.workflows_dir / "listy"
+        wf_dir.mkdir(parents=True)
+        wf_file = wf_dir / "workflow.json"
+        original = json.dumps([{"id": "n1"}])
+        wf_file.write_text(original)
+
+        result = workflow.func(
+            action="update", workflow_id="listy", data={"status": "running"}
+        )
+
+        assert "error" in result
+        assert result.get("success") is not True
+        # The malformed file is left exactly as it was.
+        assert wf_file.read_text() == original
+        # And no temporary file is orphaned next to it.
+        assert [p.name for p in wf_dir.iterdir()] == ["workflow.json"]
+
+    @pytest.mark.parametrize("payload", [["status"], "status", 3])
+    def test_non_mapping_payload_is_rejected(self, payload):
+        """An update payload that is not a mapping returns a structured error."""
+        result = workflow.func(
+            action="update", workflow_id="anything", data=payload
+        )
+        assert "error" in result
+        assert result.get("success") is not True
+
+
+class TestReadPathsSurviveMalformedData:
+    """list, status and validate must degrade structurally, never raise."""
+
+    @pytest.fixture(autouse=True)
+    def _patch_dir(self, tmp_path, monkeypatch):
+        self.workflows_dir = tmp_path / "workflows"
+        self.workflows_dir.mkdir()
+        monkeypatch.setattr("tools.workflow_tool.WORKFLOWS_DIR", self.workflows_dir)
+
+    def _write_workflow(self, data):
+        wf_dir = self.workflows_dir / data["id"]
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        (wf_dir / "workflow.json").write_text(json.dumps(data))
+
+    def test_status_with_node_missing_name(self):
+        """A node without 'name' must not raise KeyError from status."""
+        self._write_workflow(
+            {
+                "id": "no_name",
+                "name": "No name",
+                "nodes": [{"id": "n1", "state": "pending"}],
+            }
+        )
+        result = workflow.func(action="status", workflow_id="no_name")
+        assert isinstance(result, dict)
+
+    def test_status_with_node_missing_id(self):
+        """A node without 'id' must not raise KeyError from status."""
+        self._write_workflow(
+            {
+                "id": "no_id",
+                "name": "No id",
+                "nodes": [{"name": "Node 1", "state": "pending"}],
+            }
+        )
+        result = workflow.func(action="status", workflow_id="no_id")
+        assert isinstance(result, dict)
+
+    def test_validate_with_unhashable_node_state(self):
+        """An unhashable node state must not raise from the warning checks."""
+        self._write_workflow(
+            {
+                "id": "bad_state",
+                "name": "Bad state",
+                "nodes": [
+                    {"id": "n1", "name": "Node 1", "dependencies": [], "state": []}
+                ],
+            }
+        )
+        result = workflow.func(action="validate", workflow_id="bad_state")
+        assert isinstance(result, dict)
+        assert "valid" in result
+
+    def test_validate_with_unhashable_workflow_status(self):
+        """An unhashable workflow status must not raise from the warning checks."""
+        self._write_workflow(
+            {
+                "id": "bad_status",
+                "name": "Bad status",
+                "status": [],
+                "nodes": [{"id": "n1", "name": "Node 1", "dependencies": []}],
+            }
+        )
+        result = workflow.func(action="validate", workflow_id="bad_status")
+        assert isinstance(result, dict)
+        assert "valid" in result
+
+    def test_list_with_node_missing_fields(self):
+        """The list action must not raise on nodes missing fields."""
+        self._write_workflow(
+            {"id": "partial", "name": "Partial", "nodes": [{"state": "success"}]}
+        )
+        result = workflow.func(action="list")
+        assert isinstance(result, dict)
+        assert "workflows" in result
+
+
+class TestValidateDagUnhashableNodeId:
+    """_validate_dag adds node IDs to a set, so they must be usable keys."""
+
+    @pytest.mark.parametrize("node_id", [[], {}, None, 3, ""])
+    def test_unusable_node_id_returns_error(self, node_id):
+        valid, msg = _validate_dag(
+            [{"id": node_id, "name": "A", "dependencies": []}]
+        )
+        assert valid is False
+        assert "id" in msg.lower()

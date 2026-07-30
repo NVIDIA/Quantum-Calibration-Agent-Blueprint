@@ -20,8 +20,15 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from langchain_core.tools import tool
+
+from core.workflow_validation import (
+    get_node_dependencies,
+    get_workflow_nodes,
+    is_hashable,
+)
 
 ROOT_DIR = Path(__file__).parent.parent
 WORKFLOWS_DIR = ROOT_DIR / "data" / "workflows"
@@ -31,7 +38,7 @@ VALID_WORKFLOW_STATUSES = {"created", "running", "paused", "completed", "failed"
 VALID_NODE_STATES = {"pending", "running", "success", "failed", "skipped"}
 
 
-def _apply_changes(data: dict, changes: dict) -> dict:
+def _apply_changes(data: dict, changes: dict) -> tuple[dict, list[str]]:
     """Apply changes to data, supporting dot notation for nested paths.
 
     Supports:
@@ -40,8 +47,15 @@ def _apply_changes(data: dict, changes: dict) -> dict:
     - Node updates: {"nodes.node_1.state": "success"}
 
     For nodes, uses node ID to find the correct node in the array.
+
+    Returns (result, unapplied), where `unapplied` lists the change keys whose
+    path could not be traversed — an unknown node ID, or a path running
+    through a value that is not a mapping. The caller has to decide what to do
+    about those: silently dropping them and reporting success would tell the
+    caller its update landed when it did not.
     """
     result = copy.deepcopy(data)
+    unapplied = []
 
     for key, value in changes.items():
         if "." not in key:
@@ -54,12 +68,26 @@ def _apply_changes(data: dict, changes: dict) -> dict:
 
             # Navigate to parent of final key
             for i, part in enumerate(parts[:-1]):
-                if part == "nodes" and isinstance(target.get("nodes"), list):
+                # A dot path can address a value that is not a mapping, so the
+                # container has to be re-checked at every step rather than
+                # only at the start.
+                if (
+                    part == "nodes"
+                    and isinstance(target, dict)
+                    and isinstance(target.get("nodes"), list)
+                ):
                     # Next part should be node ID
                     target = target["nodes"]
                 elif isinstance(target, list):
                     # Find node by ID
-                    node = next((n for n in target if n.get("id") == part), None)
+                    node = next(
+                        (
+                            n
+                            for n in target
+                            if isinstance(n, dict) and n.get("id") == part
+                        ),
+                        None,
+                    )
                     if node is None:
                         # Node not found, skip this change
                         target = None
@@ -74,15 +102,17 @@ def _apply_changes(data: dict, changes: dict) -> dict:
                     break
 
             # Set the final value
-            if target is not None:
-                final_key = parts[-1]
-                if isinstance(target, dict):
-                    target[final_key] = value
+            if isinstance(target, dict):
+                target[parts[-1]] = value
+            else:
+                unapplied.append(key)
 
-    return result
+    return result, unapplied
 
 
-def _validate_workflow_comprehensive(workflow_id: str) -> dict:
+def _validate_workflow_comprehensive(
+    workflow_id: str, data: dict | None = None
+) -> dict:
     """Validate a workflow with comprehensive checks.
 
     Returns detailed validation results following the validate_script pattern.
@@ -99,56 +129,67 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
     wf_file = wf_dir / "workflow.json"
     plan_file = wf_dir / "plan.md"
 
-    # Check 1: Directory exists
-    if not wf_dir.exists():
+    if data is None:
+        # Check 1: Directory exists
+        if not wf_dir.exists():
+            result["checks"].append(
+                {
+                    "check": "directory_exists",
+                    "passed": False,
+                    "message": f"Workflow directory not found: {wf_dir}",
+                }
+            )
+            result["errors"].append(f"Workflow directory not found: {workflow_id}")
+            return result
         result["checks"].append(
             {
                 "check": "directory_exists",
-                "passed": False,
-                "message": f"Workflow directory not found: {wf_dir}",
+                "passed": True,
+                "message": "Workflow directory exists",
             }
         )
-        result["errors"].append(f"Workflow directory not found: {workflow_id}")
-        return result
-    result["checks"].append(
-        {
-            "check": "directory_exists",
-            "passed": True,
-            "message": "Workflow directory exists",
-        }
-    )
 
-    # Check 2: workflow.json exists
-    if not wf_file.exists():
+        # Check 2: workflow.json exists
+        if not wf_file.exists():
+            result["checks"].append(
+                {
+                    "check": "file_exists",
+                    "passed": False,
+                    "message": "workflow.json not found",
+                }
+            )
+            result["errors"].append(f"workflow.json not found in {wf_dir}")
+            return result
         result["checks"].append(
             {
                 "check": "file_exists",
-                "passed": False,
-                "message": "workflow.json not found",
+                "passed": True,
+                "message": "workflow.json exists",
             }
         )
-        result["errors"].append(f"workflow.json not found in {wf_dir}")
-        return result
-    result["checks"].append(
-        {"check": "file_exists", "passed": True, "message": "workflow.json exists"}
-    )
 
-    # Check 3: Valid JSON syntax
-    try:
-        data = json.loads(wf_file.read_text())
-    except json.JSONDecodeError as e:
+        # Check 3: Valid JSON syntax
+        try:
+            data = json.loads(wf_file.read_text())
+        except json.JSONDecodeError as e:
+            result["checks"].append(
+                {
+                    "check": "json_syntax",
+                    "passed": False,
+                    "message": f"Invalid JSON at line {e.lineno}: {e.msg}",
+                }
+            )
+            result["errors"].append(f"Invalid JSON syntax: {e}")
+            return result
         result["checks"].append(
-            {
-                "check": "json_syntax",
-                "passed": False,
-                "message": f"Invalid JSON at line {e.lineno}: {e.msg}",
-            }
+            {"check": "json_syntax", "passed": True, "message": "Valid JSON syntax"}
         )
-        result["errors"].append(f"Invalid JSON syntax: {e}")
+
+    if not isinstance(data, dict):
+        result["errors"].append(
+            f"Workflow must be an object, got {type(data).__name__}"
+        )
         return result
-    result["checks"].append(
-        {"check": "json_syntax", "passed": True, "message": "Valid JSON syntax"}
-    )
 
     # Check 4: Required fields (id, name, nodes)
     required_fields = ["id", "name", "nodes"]
@@ -203,6 +244,25 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
         }
     )
 
+    # Every node must be an object before later checks use mapping operations.
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            message = (
+                f"nodes[{index}] must be an object, got {type(node).__name__}"
+            )
+            result["checks"].append(
+                {"check": "nodes_are_objects", "passed": False, "message": message}
+            )
+            result["errors"].append(message)
+            return result
+    result["checks"].append(
+        {
+            "check": "nodes_are_objects",
+            "passed": True,
+            "message": "All nodes are objects",
+        }
+    )
+
     # Check 7: Node IDs are unique
     node_ids = []
     duplicate_ids = []
@@ -218,6 +278,9 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
             result["errors"].append(
                 f"Node missing 'id' field: {node.get('name', 'unknown')}"
             )
+            return result
+        if not isinstance(node["id"], str) or not node["id"]:
+            result["errors"].append("Node 'id' must be a non-empty string")
             return result
         if node["id"] in node_ids:
             duplicate_ids.append(node["id"])
@@ -253,6 +316,11 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
             )
             result["errors"].append(f"Node '{node['id']}' missing 'name' field")
             return result
+        if not isinstance(node["name"], str) or not node["name"]:
+            result["errors"].append(
+                f"Node '{node['id']}' name must be a non-empty string"
+            )
+            return result
     result["checks"].append(
         {
             "check": "node_names_present",
@@ -265,18 +333,16 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
     node_id_set = set(node_ids)
     invalid_deps = []
     for node in nodes:
-        deps = node.get("dependencies", [])
-        if not isinstance(deps, list):
+        deps, deps_error = get_node_dependencies(node)
+        if deps_error:
             result["checks"].append(
                 {
                     "check": "dependencies_valid",
                     "passed": False,
-                    "message": f"Node '{node['id']}' dependencies must be a list",
+                    "message": deps_error,
                 }
             )
-            result["errors"].append(
-                f"Node '{node['id']}' dependencies must be a list, got {type(deps).__name__}"
-            )
+            result["errors"].append(deps_error)
             return result
         for dep in deps:
             if dep not in node_id_set:
@@ -318,7 +384,9 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
 
     # Check 11: Workflow status value (warning)
     wf_status = data.get("status", "created")
-    if wf_status not in VALID_WORKFLOW_STATUSES:
+    # An unhashable status cannot be a valid one, and testing it against the
+    # set directly would raise instead of producing a warning.
+    if not is_hashable(wf_status) or wf_status not in VALID_WORKFLOW_STATUSES:
         result["checks"].append(
             {
                 "check": "workflow_status_valid",
@@ -342,8 +410,8 @@ def _validate_workflow_comprehensive(workflow_id: str) -> dict:
     invalid_states = []
     for node in nodes:
         state = node.get("state", "pending")
-        if state not in VALID_NODE_STATES:
-            invalid_states.append({"node": node["id"], "state": state})
+        if not is_hashable(state) or state not in VALID_NODE_STATES:
+            invalid_states.append({"node": node.get("id"), "state": state})
 
     if invalid_states:
         result["checks"].append(
@@ -453,11 +521,22 @@ def _validate_dag(nodes: list) -> tuple[bool, str]:
     if not nodes:
         return False, "Workflow has no nodes"
 
+    nodes, nodes_error = get_workflow_nodes({"nodes": nodes})
+    if nodes_error:
+        return False, nodes_error
+
     # Check all nodes have required fields
     node_ids = set()
     for node in nodes:
         if "id" not in node:
             return False, f"Node missing 'id' field: {node}"
+        # The ID is about to be added to a set and compared against, so it has
+        # to be a usable key before that happens.
+        if not isinstance(node["id"], str) or not node["id"]:
+            return False, (
+                f"Node 'id' must be a non-empty string, "
+                f"got {type(node['id']).__name__}"
+            )
         if "name" not in node:
             return False, f"Node '{node['id']}' missing 'name' field"
         if node["id"] in node_ids:
@@ -466,7 +545,9 @@ def _validate_dag(nodes: list) -> tuple[bool, str]:
 
     # Check all dependencies reference valid nodes
     for node in nodes:
-        deps = node.get("dependencies", [])
+        deps, deps_error = get_node_dependencies(node)
+        if deps_error:
+            return False, deps_error
         for dep in deps:
             if dep not in node_ids:
                 return False, f"Node '{node['id']}' has invalid dependency '{dep}'"
@@ -534,7 +615,9 @@ def _load_history(workflow_id: str, last_n: int = 20) -> list[dict]:
 
 def _format_status(data: dict, history: list[dict]) -> dict:
     """Format workflow status for display."""
-    nodes = data.get("nodes", [])
+    nodes, nodes_error = get_workflow_nodes(data)
+    if nodes_error:
+        return {"error": "Invalid workflow data", "details": nodes_error}
     total = len(nodes)
     completed = sum(1 for n in nodes if n.get("state") == "success")
     failed = sum(1 for n in nodes if n.get("state") == "failed")
@@ -546,10 +629,10 @@ def _format_status(data: dict, history: list[dict]) -> dict:
     current_node_info = None
     if current_node:
         for n in nodes:
-            if n["id"] == current_node:
+            if n.get("id") == current_node:
                 current_node_info = {
-                    "id": n["id"],
-                    "name": n["name"],
+                    "id": n.get("id"),
+                    "name": n.get("name"),
                     "state": n.get("state", "pending"),
                     "run_count": n.get("run_count", 0),
                 }
@@ -572,8 +655,8 @@ def _format_status(data: dict, history: list[dict]) -> dict:
         "current_node": current_node_info,
         "nodes": [
             {
-                "id": n["id"],
-                "name": n["name"],
+                "id": n.get("id"),
+                "name": n.get("name"),
                 "dependencies": n.get("dependencies", []),
                 "state": n.get("state", "pending"),
                 "run_count": n.get("run_count", 0),
@@ -639,7 +722,15 @@ def workflow(
                     if wf_file.exists():
                         try:
                             data = json.loads(wf_file.read_text())
-                            nodes = data.get("nodes", [])
+                            nodes, nodes_error = get_workflow_nodes(data)
+                            if nodes_error:
+                                workflows.append(
+                                    {
+                                        "workflow_id": wf_dir.name,
+                                        "error": nodes_error,
+                                    }
+                                )
+                                continue
                             completed = sum(
                                 1 for n in nodes if n.get("state") == "success"
                             )
@@ -712,6 +803,13 @@ def workflow(
         if not data:
             return {"error": "data required"}
 
+        if not isinstance(data, dict):
+            return {
+                "error": (
+                    f"data must be an object, got {type(data).__name__}"
+                )
+            }
+
         wf_dir = WORKFLOWS_DIR / workflow_id
         wf_file = wf_dir / "workflow.json"
 
@@ -726,32 +824,46 @@ def workflow(
             existing = {"id": workflow_id}
             is_new = True
 
+        # A previously persisted top-level non-object cannot be merged into.
+        # Reject it here so the recovery path reports the problem instead of
+        # raising from the dot-notation traversal below.
+        if not isinstance(existing, dict):
+            return {
+                "error": (
+                    f"Existing workflow.json must be an object, "
+                    f"got {type(existing).__name__}"
+                )
+            }
+
         # Apply changes
-        merged = _apply_changes(existing, data)
+        merged, unapplied = _apply_changes(existing, data)
+        if unapplied:
+            return {
+                "error": "Update could not be applied",
+                "details": [
+                    f"No traversable path for '{key}'" for key in unapplied
+                ],
+            }
 
-        # Ensure directory exists
-        wf_dir.mkdir(parents=True, exist_ok=True)
-
-        # Write tentatively
-        wf_file.write_text(json.dumps(merged, indent=2))
-
-        # Validate
-        validation = _validate_workflow_comprehensive(workflow_id)
+        # Validate the merged data before creating directories or writing files.
+        validation = _validate_workflow_comprehensive(workflow_id, data=merged)
 
         if not validation["valid"]:
-            # Rollback: restore original or delete if new
-            if is_new:
-                wf_file.unlink(missing_ok=True)
-                if wf_dir.exists() and not any(wf_dir.iterdir()):
-                    wf_dir.rmdir()
-            else:
-                wf_file.write_text(json.dumps(existing, indent=2))
-
             return {
                 "error": "Validation failed",
                 "details": validation["errors"],
                 "warnings": validation["warnings"],
             }
+
+        # Persist only validated data. Replacing a same-directory temporary file
+        # avoids exposing partially written JSON to concurrent readers.
+        wf_dir.mkdir(parents=True, exist_ok=True)
+        temp_file = wf_file.with_name(f".{wf_file.name}.{uuid4().hex}.tmp")
+        try:
+            temp_file.write_text(json.dumps(merged, indent=2))
+            temp_file.replace(wf_file)
+        finally:
+            temp_file.unlink(missing_ok=True)
 
         return {
             "success": True,
