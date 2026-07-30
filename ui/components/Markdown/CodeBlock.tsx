@@ -36,20 +36,14 @@ export const CodeBlock: FC<Props> = memo(({ language, value }) => {
   const { t } = useTranslation('markdown');
   const [isCopied, setIsCopied] = useState<boolean>(false);
 
-  // Ensure value is a valid JSON string
-  if (language === 'json') {
-    try {
-      value = value.replaceAll("'", '"');
-    } catch (error) {
-      console.log(error);
-    }
-  }
-
   const formattedValue = (() => {
+    if (language !== 'json') {
+      return value;
+    }
     try {
-      return JSON.stringify(JSON.parse(value), null, 2);
+      return JSON.stringify(JSON.parse(value.replaceAll("'", '"')), null, 2);
     } catch {
-      return value; // Return the original value if parsing fails
+      return value;
     }
   })();
 
@@ -96,7 +90,7 @@ export const CodeBlock: FC<Props> = memo(({ language, value }) => {
 
   return (
     <div className="codeblock relative font-sans text-[16px]">
-      <div className="flex items-center justify-between py-1.5 px-4">
+      <div className="flex items-center justify-between py-1.5 px-4 bg-[#282c34] rounded-t">
         <span className="text-xs lowercase text-white">{language}</span>
 
         <div className="flex items-center">

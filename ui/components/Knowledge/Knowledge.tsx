@@ -31,6 +31,10 @@ import {
 } from '@tabler/icons-react';
 
 import remarkGfm from 'remark-gfm';
+
+import { fenceLeadingFrontmatter } from '@/utils/app/frontmatter';
+
+import { getReactMarkDownCustomComponents } from '../Markdown/CustomComponents';
 import { MemoizedReactMarkdown } from '../Markdown/MemoizedReactMarkdown';
 
 interface KnowledgeDocument {
@@ -83,6 +87,19 @@ export const Knowledge = () => {
 
   // Sort order
   const [sortOrder, setSortOrder] = useState<SortOrder>('newest');
+
+  const markdownComponents = useMemo(
+    () => getReactMarkDownCustomComponents(),
+    [],
+  );
+
+  // Skill docs (and some knowledge files) open with a YAML frontmatter block.
+  // Markdown has no notion of it, so it would render as a horizontal rule plus
+  // raw key/value lines; fencing it lets CodeBlock highlight it as YAML.
+  const renderedContent = useMemo(
+    () => fenceLeadingFrontmatter(selectedDocument?.content ?? ''),
+    [selectedDocument?.content],
+  );
 
   // Load documents on mount
   useEffect(() => {
@@ -469,8 +486,12 @@ export const Knowledge = () => {
               <div className="flex-1 overflow-y-auto bg-white dark:bg-[#343541]">
                 <div className="p-6 max-w-4xl mx-auto">
                   <div className="prose dark:prose-invert max-w-none prose-pre:bg-gray-100 dark:prose-pre:bg-gray-800 prose-code:text-blue-600 dark:prose-code:text-blue-400">
-                    <MemoizedReactMarkdown className="markdown" remarkPlugins={[remarkGfm]}>
-                      {selectedDocument.content}
+                    <MemoizedReactMarkdown
+                      className="markdown"
+                      remarkPlugins={[remarkGfm]}
+                      components={markdownComponents}
+                    >
+                      {renderedContent}
                     </MemoizedReactMarkdown>
                   </div>
                 </div>
