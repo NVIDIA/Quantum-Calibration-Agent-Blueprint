@@ -24,8 +24,6 @@ import {
   IconFolder,
   IconFolderOpen,
   IconSettings,
-  IconBrain,
-  IconHistory,
   IconSortDescending,
   IconSortAscending,
 } from '@tabler/icons-react';
@@ -247,7 +245,6 @@ export const Knowledge = () => {
 
   const renderFolder = (
     name: string,
-    icon: React.ReactNode,
     docs: KnowledgeDocument[],
     emptyMessage: string
   ) => {
@@ -400,7 +397,6 @@ export const Knowledge = () => {
             {data?.folders?.documents && (
               renderFolder(
                 'documents',
-                <IconFileText size={16} />,
                 data.folders.documents,
                 'No documentation yet'
               )
@@ -410,7 +406,6 @@ export const Knowledge = () => {
             {data?.folders?.skills && (
               renderFolder(
                 'skills',
-                <IconBrain size={16} />,
                 data.folders.skills,
                 'No skills documented yet'
               )
@@ -420,7 +415,6 @@ export const Knowledge = () => {
             {data?.folders?.memory && (
               renderFolder(
                 'memory',
-                <IconHistory size={16} />,
                 data.folders.memory,
                 'No memories recorded yet'
               )
