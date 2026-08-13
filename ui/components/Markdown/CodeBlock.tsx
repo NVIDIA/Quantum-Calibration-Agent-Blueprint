@@ -47,7 +47,7 @@ export const CodeBlock: FC<Props> = memo(({ language, value }) => {
     }
   })();
 
-  const copyToClipboard = (e) => {
+  const copyToClipboard = (e: MouseEvent<HTMLButtonElement>) => {
     e?.preventDefault();
     e?.stopPropagation();
     if (!navigator.clipboard || !navigator.clipboard.writeText) {
@@ -63,7 +63,7 @@ export const CodeBlock: FC<Props> = memo(({ language, value }) => {
     });
   };
 
-  const downloadAsFile = (e) => {
+  const downloadAsFile = (e: MouseEvent<HTMLButtonElement>) => {
     e?.preventDefault();
     e?.stopPropagation();
     const fileExtension = programmingLanguages[language] || '.file';
