@@ -1,6 +1,6 @@
 # QCA Lite backend upstream-plugin migration plan
 
-**Status:** implementation and validation complete; guarded GitLab branch/MR migration pending
+**Status:** complete; implemented, validated, and delivered in GitLab MR !4
 
 **Authoritative source:** `git@github.com:NVIDIA/Quantum-Calibration-Agent-Blueprint.git`, branch
 `main`
@@ -269,6 +269,21 @@ execution time. A representative guarded push is:
 git push --force-with-lease=refs/heads/extended-backend:<observed-old-sha> \
   origin migration/extended-backend-plugin:refs/heads/extended-backend
 ```
+
+## Execution record
+
+The migration completed on 2026-09-22:
+
+- official GitHub `main` and GitLab `github-main` both resolved to `d8d37bc4`;
+- GitLab `main` remained at `b5c86f1`;
+- the old headless `extended-backend` tip `5f966e5` was preserved at
+  `archive/extended-backend-headless-20260922`;
+- the validated upstream-based candidate replaced `extended-backend` with an exact
+  `--force-with-lease`;
+- MR !3 was retargeted, but GitLab retained stale conflict metadata despite an identical local
+  merge tree, so it was documented and closed;
+- clean replacement MR !4 targets `github-main` and GitLab reports it mergeable;
+- no GitHub ref was mutated.
 
 ## Rollback
 

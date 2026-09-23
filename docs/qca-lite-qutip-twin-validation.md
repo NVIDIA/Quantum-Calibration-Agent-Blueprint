@@ -103,3 +103,10 @@ One upstream limitation was observed: `tools/lab_tool.py` uses its repository `d
 directly, rather than the CLI's `QCAL_DATA_DIR` helper. The artifacts therefore landed in ignored
 local runtime storage even though an isolated data directory was exported. This did not require or
 produce a source change.
+
+## Delivery
+
+The validated commit was pushed only to NVIDIA GitLab. `extended-backend` descends directly from
+the `github-main` mirror, GitLab `main` remains unchanged, and mergeable MR !4 targets
+`github-main`. The previous headless branch tip is preserved at
+`archive/extended-backend-headless-20260922`. No GitHub push was performed.
