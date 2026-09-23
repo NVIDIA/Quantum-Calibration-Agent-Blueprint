@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Run the QCA Lite twin as a serial local service."""
+"""Run QCA's optional Lite twin as a serial local service."""
 
 from __future__ import annotations
 

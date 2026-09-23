@@ -46,6 +46,10 @@ python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
 pip install -e .
 
+# Include the QuTiP-based QCA Lite experiments
+pip install -e ".[lite-twin]"
+# On a compatible CUDA host, use: pip install -e ".[lite-twin-cuda]"
+
 # Install UI dependencies
 cd ui && npm install && cd ..
 
@@ -81,9 +85,30 @@ qca
 
 ```bash
 qca experiments list
-qca experiments run t1_measurement
+qca experiments run lite_t1
 qca workflow list
 ```
+
+### QCA Lite digital twin
+
+The included `lite_*` experiments use a small QuTiP digital twin. Start it in a second terminal,
+create either a deterministic seeded session or an explicitly configured hidden-truth session,
+then export the returned session ID before launching QCA:
+
+```bash
+qca-lite-twin --data-layer auto --port 8090
+
+curl -sS http://127.0.0.1:8090/sessions \
+  -H 'content-type: application/json' \
+  -d '{"truth_mode":"seeded","profile":"qca-lite-1q","seed":17}'
+
+export QCA_LITE_TWIN_URL=http://127.0.0.1:8090
+export QCA_LITE_TWIN_SESSION_ID=<session-id>
+qca experiments list --human
+```
+
+Run the experiments in this order: `lite_resonator_spectroscopy`,
+`lite_qubit_spectroscopy`, `lite_rabi_amplitude`, `lite_ramsey_frequency`, then `lite_t1`.
 
 ## Key Features
 

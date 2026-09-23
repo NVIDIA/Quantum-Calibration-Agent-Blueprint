@@ -24,7 +24,7 @@ def lite_qubit_spectroscopy(
         shots: Requested shots per point.
         probe_amp: Square-pulse probe amplitude.
         seed: Deterministic measurement seed.
-        apply: Apply the measured frequency to the plugin session when the fit passes.
+        apply: Apply the measured frequency to the twin session when the fit passes.
     """
     import numpy as np
 
@@ -84,8 +84,8 @@ def lite_qubit_spectroscopy(
         "peak_contrast": scalar(contrast, "probability", "Spectral contrast"),
         "fit_uncertainty_hz": scalar(uncertainty, "Hz", "Center uncertainty"),
         "fit_parameters": metadata(parameters, "Square-pulse fit parameters"),
-        "configuration_applied": scalar(applied, "", "Applied to plugin session"),
-        "config_version": scalar(config_version, "", "Plugin configuration version"),
+        "configuration_applied": scalar(applied, "", "Applied to twin session"),
+        "config_version": scalar(config_version, "", "Twin configuration version"),
         "backend_provenance": metadata(run.provenance, "Backend provenance"),
     }
     plot = fit_plot(

@@ -22,6 +22,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+lite-twin = [
+    "flask>=3.1,<4",
+    "numpy>=2.2,<3",
+    "qutip>=5.2,<6",
+    "requests>=2.32,<3",
+    "scipy>=1.15,<2",
+    "werkzeug>=3.1,<4",
+]
+lite-twin-cuda = [
+    "flask>=3.1,<4",
+    "numpy>=2.2,<3",
+    "qutip>=5.2,<6",
+    "requests>=2.32,<3",
+    "scipy>=1.15,<2",
+    "werkzeug>=3.1,<4",
+    "cuquantum-python-cu13>=26.1,<27",
+    "qutip-cuquantum>=0.3,<0.4",
+]
 test = [
     "pytest>=9.0.3",
     "pytest-cov>=4.0",
@@ -36,6 +54,7 @@ docs = [
 
 [project.scripts]
 qca = "cli:main"
+qca-lite-twin = "scripts._lite_twin.__main__:main"
 
 [build-system]
 requires = ["setuptools>=61.0"]
@@ -43,7 +62,7 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
 py-modules = ["cli", "prompt", "server"]
-packages = ["tools", "vlm", "core", "scripts"]
+packages = ["tools", "vlm", "core", "scripts", "scripts._lite_twin"]
 
 [tool.setuptools.package-data]
 "*" = ["*.yaml", "*.json", "*.md"]
@@ -56,6 +75,7 @@ python_functions = ["test_*"]
 markers = [
     "unit: Unit tests",
     "integration: Integration tests",
+    "gpu: requires a working QuTiP cuQuantum data layer",
     "slow: Slow running tests",
 ]
 addopts = [

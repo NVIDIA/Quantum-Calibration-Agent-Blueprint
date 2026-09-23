@@ -9,9 +9,9 @@ import math
 
 import pytest
 
-from qca_lite_twin.app import create_app
-from qca_lite_twin.model import ModelError, provision
-from qca_lite_twin.simulator import Runtime, SimulationError, resolve_runtime, run
+from scripts._lite_twin.app import create_app
+from scripts._lite_twin.model import ModelError, provision
+from scripts._lite_twin.simulator import Runtime, SimulationError, resolve_runtime, run
 
 
 def _truth(*, t1_us=20.0, tphi_us=1.0e9):

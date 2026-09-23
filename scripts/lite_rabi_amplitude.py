@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Amplitude-Rabi calibration using the QCA Lite QuTiP twin plugin."""
+"""Amplitude-Rabi calibration using the QCA Lite QuTiP twin."""
 
 from typing import Annotated
 
@@ -84,8 +84,8 @@ def lite_rabi_amplitude(
         "rabi_contrast": scalar(contrast, "probability", "Rabi contrast"),
         "peak_inversion": scalar(inversion, "probability", "Peak inversion"),
         "fit_parameters": metadata(parameters, "Rabi fit parameters"),
-        "configuration_applied": scalar(applied, "", "Applied to plugin session"),
-        "config_version": scalar(config_version, "", "Plugin configuration version"),
+        "configuration_applied": scalar(applied, "", "Applied to twin session"),
+        "config_version": scalar(config_version, "", "Twin configuration version"),
         "backend_provenance": metadata(run.provenance, "Backend provenance"),
     }
     plot = fit_plot(

@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""T1 characterization using the QCA Lite QuTiP twin plugin."""
+"""T1 characterization using the QCA Lite QuTiP twin."""
 
 from typing import Annotated
 
@@ -13,7 +13,7 @@ def lite_t1(
     shots: Annotated[int, (1, 10000)] = 128,
     seed: Annotated[int, (0, 2_147_483_647)] = 0,
 ) -> dict:
-    """Measure T1 without changing the plugin session configuration.
+    """Measure T1 without changing the twin session configuration.
 
     Args:
         target: Qubit label, Q1 or Q2.
@@ -79,7 +79,7 @@ def lite_t1(
         "config_version": scalar(
             int(run.provenance.get("config_version", 0)),
             "",
-            "Plugin configuration version",
+            "Twin configuration version",
         ),
         "backend_provenance": metadata(run.provenance, "Backend provenance"),
     }

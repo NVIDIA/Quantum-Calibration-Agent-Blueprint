@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Dispersive resonator spectroscopy using the QCA Lite QuTiP twin plugin."""
+"""Dispersive resonator spectroscopy using the QCA Lite QuTiP twin."""
 
 from typing import Annotated
 
@@ -22,7 +22,7 @@ def lite_resonator_spectroscopy(
         points: Number of frequency points.
         shots: IQ shots per point.
         seed: Deterministic measurement seed.
-        apply: Apply the measured frequency to the plugin session when the fit passes.
+        apply: Apply the measured frequency to the twin session when the fit passes.
     """
     import numpy as np
 
@@ -77,8 +77,8 @@ def lite_resonator_spectroscopy(
         "fit_uncertainty_hz": scalar(uncertainty, "Hz", "Center uncertainty"),
         "contrast": scalar(contrast, "a.u.", "Resonance contrast"),
         "fit_parameters": metadata(parameters, "Lorentzian parameters"),
-        "configuration_applied": scalar(applied, "", "Applied to plugin session"),
-        "config_version": scalar(config_version, "", "Plugin configuration version"),
+        "configuration_applied": scalar(applied, "", "Applied to twin session"),
+        "config_version": scalar(config_version, "", "Twin configuration version"),
         "backend_provenance": metadata(run.provenance, "Backend provenance"),
     }
     plot = fit_plot(

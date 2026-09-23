@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Small QCA-side adapter for the standalone QCA Lite QuTiP twin plugin."""
+"""Small adapter for QCA's built-in Lite QuTiP twin service."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ class LiteRun:
 
 
 class LiteTwinClient:
-    """HTTP client limited to the routes used by the five plugin experiments."""
+    """HTTP client limited to the routes used by the five Lite experiments."""
 
     def __init__(self, base_url: str, *, timeout: float = 600.0) -> None:
         self.base_url = base_url.rstrip("/")

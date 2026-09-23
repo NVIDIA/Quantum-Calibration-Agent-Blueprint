@@ -1,7 +1,7 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026 NVIDIA CORPORATION & AFFILIATES.
 # SPDX-License-Identifier: Apache-2.0
 
-"""Ramsey frequency refinement using the QCA Lite QuTiP twin plugin."""
+"""Ramsey frequency refinement using the QCA Lite QuTiP twin."""
 
 from typing import Annotated
 
@@ -107,8 +107,8 @@ def lite_ramsey_frequency(
             period_uncertainty_ns, "ns", "Period uncertainty"
         ),
         "fit_parameters": metadata(parameters, "Ramsey fit parameters"),
-        "configuration_applied": scalar(applied, "", "Applied to plugin session"),
-        "config_version": scalar(config_version, "", "Plugin configuration version"),
+        "configuration_applied": scalar(applied, "", "Applied to twin session"),
+        "config_version": scalar(config_version, "", "Twin configuration version"),
         "backend_provenance": metadata(run.provenance, "Backend provenance"),
     }
     plot = fit_plot(

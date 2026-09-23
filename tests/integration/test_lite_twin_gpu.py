@@ -5,8 +5,8 @@
 
 import pytest
 
-from qca_lite_twin.model import provision
-from qca_lite_twin.simulator import resolve_runtime, run
+from scripts._lite_twin.model import provision
+from scripts._lite_twin.simulator import resolve_runtime, run
 
 
 @pytest.mark.gpu

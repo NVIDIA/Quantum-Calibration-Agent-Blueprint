@@ -13,18 +13,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Mock experiments with realistic wall-clock execution time for workflow testing."""
+"""QuTiP-backed QCA Lite calibration experiments."""
 
-from .resonator_spectroscopy import resonator_spectroscopy
-from .qubit_spectroscopy import qubit_spectroscopy
-from .rabi_oscillation import rabi_oscillation
-from .t1_measurement import t1_measurement
-from .ramsey_measurement import ramsey_measurement
+from .lite_qubit_spectroscopy import lite_qubit_spectroscopy
+from .lite_rabi_amplitude import lite_rabi_amplitude
+from .lite_ramsey_frequency import lite_ramsey_frequency
+from .lite_resonator_spectroscopy import lite_resonator_spectroscopy
+from .lite_t1 import lite_t1
 
 __all__ = [
-    "resonator_spectroscopy",
-    "qubit_spectroscopy",
-    "rabi_oscillation",
-    "t1_measurement",
-    "ramsey_measurement",
+    "lite_qubit_spectroscopy",
+    "lite_rabi_amplitude",
+    "lite_ramsey_frequency",
+    "lite_resonator_spectroscopy",
+    "lite_t1",
 ]

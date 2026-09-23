@@ -11,11 +11,11 @@ from pathlib import Path
 
 from werkzeug.serving import make_server
 
-from qca_lite_twin.app import create_app
-from qca_lite_twin.simulator import Runtime
+from scripts._lite_twin.app import create_app
+from scripts._lite_twin.simulator import Runtime
 
 
-REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
+REPOSITORY_ROOT = Path(__file__).resolve().parents[2]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
 
